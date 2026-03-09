@@ -6,19 +6,28 @@ Trợ lý AI tích hợp với Microsoft Outlook, giúp tự động hóa các c
 
 ## Tính năng
 
-### Tính năng cơ bản
-| Tính năng | Mô tả |
-|-----------|-------|
-| **Phân loại Email** | Tự động phân tích và phân loại email theo mức độ ưu tiên, danh mục, và hành động cần thực hiện |
-| **Tạo Task** | Trích xuất các công việc cần làm từ email và tạo task trực tiếp trong Outlook |
-| **Tạo Lịch họp** | Phát hiện thông tin cuộc họp trong email và tạo sự kiện vào Outlook Calendar |
+### Phân tích & Soạn thảo (AI-driven)
 
-### Tính năng nâng cao
 | Tính năng | Mô tả |
 |-----------|-------|
-| **Tóm tắt Thread** | Tóm tắt toàn bộ luồng email một cách có cấu trúc (điểm chính, quyết định, hành động tiếp theo) |
-| **Viết lại Email (VI/EN)** | Viết lại nội dung email theo văn phong chuyên nghiệp bằng tiếng Việt hoặc tiếng Anh |
-| **Gợi ý lịch ngày** | Đề xuất kế hoạch làm việc tối ưu cho ngày dựa trên email và task hiện có |
+| **1. Phân loại Email** | Tự động phân tích và phân loại email theo mức độ ưu tiên (Urgent/Normal/Low), danh mục (Work/Personal/Newsletter), và hành động cần thực hiện |
+| **2. Tạo Task** | Trích xuất các công việc cần làm từ email và tạo task trực tiếp trong Outlook Tasks với due date và mô tả đầy đủ |
+| **3. Tạo Lịch họp** | Phát hiện thông tin cuộc họp trong email (thời gian, địa điểm, người tham dự) và tạo sự kiện vào Outlook Calendar |
+| **4. Tóm tắt Email/Thread** | Tóm tắt email đơn lẻ hoặc toàn bộ luồng hội thoại thành các điểm chính, quyết định và hành động tiếp theo |
+| **5. Viết lại Email (VI)** | Viết lại nội dung email theo văn phong chuyên nghiệp bằng tiếng Việt (kính ngữ, câu văn rõ ràng) |
+| **6. Viết lại Email (EN)** | Viết lại nội dung email theo văn phong chuyên nghiệp bằng tiếng Anh (Dear/Sincerely format) |
+| **7. Gợi ý lịch ngày** | Đề xuất kế hoạch làm việc tối ưu cho ngày dựa trên email và task hiện có, hỗ trợ ghi chú bổ sung |
+
+### Quản lý & Dọn dẹp
+
+| Tính năng | Mô tả |
+|-----------|-------|
+| **8. Quét Spam/Newsletter** | Dùng AI để quét và phân loại toàn bộ email trong danh sách thành: spam, newsletter, hoặc email bình thường |
+| **9. Xóa Spam** | Xóa vĩnh viễn tất cả email được phân loại là spam sau khi đã quét (yêu cầu quét trước) |
+| **10. Di chuyển Newsletter** | Di chuyển email newsletter vào thư mục phân loại theo tên người gửi: `Newsletter/Gmail/TênNgườiGửi/` |
+| **11. Sắp xếp Email** | Tự động tổ chức email theo người gửi và năm: `Organized/TênCôngTy/Năm/` hoặc `Organized/Gmail/TênNgười/Năm/` |
+| **12. Archive Email cũ** | Di chuyển email cũ hơn 2 năm ra các file PST riêng biệt theo từng năm: `Outlook_Archive_2023.pst`, `Outlook_Archive_2022.pst`, ... |
+| **13. Kiểm tra kích thước PST** | Hiển thị kích thước tất cả PST/mailbox đang mở với bar chart ASCII, cảnh báo khi gần đạt giới hạn 50 GB |
 
 ---
 
@@ -83,7 +92,10 @@ python main.py
 │  │                │  │  Kết quả AI                         │
 │  └────────────────┘  │  Output từ các tính năng AI         │
 ├──────────────────────┴──────────────────────────────────────┤
-│ [Phân loại] [Tạo Task] [Tạo Lịch] [Tóm tắt] [VI] [EN] [📅]│
+│ Hàng 1: [Phân loại] [Tạo Task] [Tạo Lịch họp] [Tóm tắt]  │
+│ Hàng 2: [Viết lại VI] [Viết lại EN] [Gợi ý lịch ngày]     │
+│ Hàng 3: [Quét Spam/Newsletter] [Xóa Spam] [Di chuyển NL]  │
+│ Hàng 4: [Sắp xếp Email] [Archive Email cũ] [Kiểm tra PST] │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -105,6 +117,12 @@ python main.py
 | **Viết lại (VI)** | Viết lại bằng tiếng Việt | Nội dung email chuyên nghiệp |
 | **Viết lại (EN)** | Viết lại bằng tiếng Anh | Professional English email |
 | **Gợi ý lịch ngày** | Lên kế hoạch hôm nay | Lịch làm việc theo giờ |
+| **Quét Spam/Newsletter** | Quét toàn bộ email trong danh sách | Báo cáo: X spam, Y newsletter, Z normal |
+| **Xóa Spam** | Xóa email spam (phải quét trước) | Xác nhận số email đã xóa |
+| **Di chuyển Newsletter** | Chuyển newsletter vào folder riêng | Cấu trúc Newsletter/Brand/Sender/ |
+| **Sắp xếp Email** | Tổ chức email theo sender/năm | Preview → xác nhận → di chuyển |
+| **Archive Email cũ** | Lưu trữ email >2 năm ra PST | Một file .pst riêng cho mỗi năm |
+| **Kiểm tra PST** | Hiển thị kích thước tất cả PST | Bar chart + cảnh báo nếu >47 GB |
 
 ---
 
@@ -118,20 +136,22 @@ Outlook_AI/
 ├── outlook_client.py          # Wrapper Outlook COM (pywin32)
 ├── features/
 │   ├── __init__.py
-│   ├── email_classifier.py    # Phân loại email
-│   ├── task_creator.py        # Tạo Outlook task
-│   ├── calendar_creator.py    # Tạo Outlook calendar event
-│   ├── email_summarizer.py    # Tóm tắt luồng email
-│   ├── email_rewriter.py      # Viết lại email
-│   └── scheduler.py           # Gợi ý lịch ngày
+│   ├── email_classifier.py    # Tính năng 1: Phân loại email
+│   ├── task_creator.py        # Tính năng 2: Tạo Outlook task
+│   ├── calendar_creator.py    # Tính năng 3: Tạo Outlook calendar event
+│   ├── email_summarizer.py    # Tính năng 4: Tóm tắt email/thread
+│   ├── email_rewriter.py      # Tính năng 5+6: Viết lại email VI/EN
+│   ├── scheduler.py           # Tính năng 7: Gợi ý lịch ngày
+│   ├── spam_cleaner.py        # Tính năng 8+9+10: Quét/Xóa spam, Di chuyển newsletter
+│   └── email_organizer.py     # Tính năng 11+12+13: Sắp xếp, Archive, Kiểm tra PST
 ├── requirements.txt
 ├── .env.example
 └── docs/
-    ├── README.md
-    ├── ARCHITECTURE.md
-    ├── IMPLEMENTATION_PLAN.md
-    ├── TEST_PLAN.md
-    └── DEV_DIARY.md
+    ├── README.md              # Tài liệu này
+    ├── ARCHITECTURE.md        # Kiến trúc hệ thống
+    ├── IMPLEMENTATION_PLAN.md # Kế hoạch triển khai
+    ├── TEST_PLAN.md           # Kế hoạch kiểm thử
+    └── DEV_DIARY.md           # Nhật ký phát triển
 ```
 
 ---
@@ -144,6 +164,7 @@ Outlook_AI/
 | `pywin32 is not installed` | Thiếu dependency | `pip install pywin32` |
 | `Lỗi kết nối Outlook` | Outlook chưa mở | Mở Microsoft Outlook trước khi chạy app |
 | `Rate limit error` | Gọi API quá nhiều | Chờ vài giây và thử lại |
+| `Không tạo được PST` | Không có quyền ghi vào thư mục | Chọn thư mục khác có quyền ghi |
 
 ---
 

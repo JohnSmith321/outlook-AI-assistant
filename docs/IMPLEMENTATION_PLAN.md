@@ -9,7 +9,7 @@
 | LLM | Claude Opus 4.6 (Anthropic) |
 | Tích hợp Outlook | pywin32 (COM/MAPI) |
 | GUI | tkinter (built-in) |
-| Tổng thời gian ước tính | 3 ngày |
+| Tổng thời gian ước tính | 5 ngày |
 
 ---
 
@@ -112,13 +112,78 @@
 
 ---
 
-## Giai đoạn 5: Tài liệu (Ngày 3 – buổi chiều)
+## Giai đoạn 5: Multi-PST & Nested Folders (Ngày 4 – buổi sáng)
+
+### 5.1 Mở rộng OutlookClient
+- [x] `get_all_stores()` – liệt kê tất cả PST/mailbox đang mở trong Outlook
+- [x] `get_store_sizes()` – đọc kích thước từng PST qua `os.path.getsize(store.FilePath)`
+- [x] `get_or_open_pst(pst_path, display_name)` – mở hoặc tạo PST mới qua `ns.AddStoreEx()`
+- [x] `get_or_create_folder_path(store_id, path_parts)` – tạo nested folder tùy ý
+- [x] `move_email(entry_id, store_id, folder_path)` – di chuyển email giữa các folder/PST
+- [x] Batch email loading từ nhiều folder/PST
+
+**Tiêu chí hoàn thành**: Có thể tạo PST mới, tạo folder con, và di chuyển email giữa PST
+
+---
+
+## Giai đoạn 6: Spam/Newsletter/Organizer/Archive/PST Monitoring (Ngày 4–5)
+
+### 6.1 Spam & Newsletter Scanner (`features/spam_cleaner.py`)
+- [x] `ScanResult` dataclass: spam_ids, newsletter_ids, normal_ids, classifications
+- [x] System prompt phân loại 3 loại: spam / newsletter / normal
+- [x] `SpamCleaner.scan(emails)` – gọi Claude cho từng email, parse JSON, regex fallback
+- [x] Thống kê kết quả (số lượng từng loại)
+- [x] GUI: nút "Quét Spam/Newsletter" gọi scan, hiển thị báo cáo tóm tắt
+
+**Test case**: Email quảng cáo → spam; email bản tin định kỳ → newsletter; email công việc → normal
+
+### 6.2 Xóa Spam & Di chuyển Newsletter (`features/spam_cleaner.py`)
+- [x] `delete_spam(scan_result)` – xóa tất cả email được đánh dấu spam
+- [x] `move_newsletters(scan_result, target_folder)` – di chuyển newsletter đến folder chỉ định
+  - [x] Folder Newsletter phân theo sender: `Newsletter/Gmail/Tên người gửi/`
+  - [x] Hỗ trợ các personal domain: gmail.com, yahoo.com, hotmail.com, v.v.
+- [x] GUI: nút "Xóa Spam" và "Di chuyển Newsletter" (disabled nếu chưa quét)
+
+### 6.3 Sắp xếp Email theo Sender (`features/email_organizer.py`)
+- [x] `_get_organize_rel_path(email)` – phân loại theo domain:
+  - Company domain → `Organized/TênCôngTy/Năm/`
+  - Personal domain → `Organized/BrandName/TênNgườiGửi/Năm/`
+- [x] `plan_organize(emails)` – nhóm email theo path key (Dict[Tuple[str, ...], List])
+- [x] `OrganizePlan` dataclass với tổng hợp thống kê
+- [x] GUI: nút "Sắp xếp Email" gọi plan, hiển thị preview, xác nhận rồi di chuyển
+- [x] `_organize_thread` dùng variable-length path để tránh crash với 3-tuple
+
+**Test case**: Email từ abc@gmail.com → `Organized/Gmail/abc/2025/`; email từ user@company.vn → `Organized/Company/2025/`
+
+### 6.4 Archive Email cũ ra PST (`features/email_organizer.py`)
+- [x] `plan_archive(emails, cutoff_years=2)` – lọc email cũ hơn cutoff, nhóm theo năm
+- [x] Xử lý timezone-aware datetime khi so sánh với cutoff
+- [x] GUI: nút "Archive Email cũ" → preview danh sách file PST → chọn thư mục → di chuyển
+- [x] Một file PST riêng cho mỗi năm: `Outlook_Archive_{year}.pst`
+- [x] Email trong mỗi PST nằm trong folder `Archive/`
+- [x] `filedialog.askdirectory()` cho user chọn thư mục xuất
+
+**Test case**: Email năm 2023 và 2022 → tạo `Outlook_Archive_2023.pst` và `Outlook_Archive_2022.pst`
+
+### 6.5 Kiểm tra kích thước PST (`features/email_organizer.py`)
+- [x] `format_pst_sizes(sizes)` – render bảng + bar chart ASCII cho từng PST
+- [x] Ngưỡng cảnh báo: 47 GB (⚠️ warning), 50 GB (⛔ critical)
+- [x] GUI: nút "Kiểm tra PST" → hiển thị báo cáo chi tiết
+- [x] Passive check: tự động kiểm tra sau mỗi lần load email → popup nếu vượt ngưỡng
+- [x] Lambda closure safety: dùng default arg binding `lambda m=msg: ...` tránh late-binding bug
+
+**Test case**: PST có kích thước 48 GB → hiển thị cảnh báo màu vàng; >50 GB → popup lỗi đỏ
+
+---
+
+## Giai đoạn 7: Tài liệu (Hoàn thiện)
 
 - [x] `docs/README.md` – hướng dẫn cài đặt và sử dụng
 - [x] `docs/ARCHITECTURE.md` – mô tả kiến trúc hệ thống
 - [x] `docs/IMPLEMENTATION_PLAN.md` – kế hoạch triển khai (file này)
 - [x] `docs/TEST_PLAN.md` – kế hoạch kiểm thử
 - [x] `docs/DEV_DIARY.md` – nhật ký phát triển
+- [x] Root `README.md` – hướng dẫn đầy đủ với tất cả tính năng mới
 
 ---
 
@@ -131,6 +196,9 @@
 | JSON parse lỗi từ Claude | Trung bình | Regex fallback để extract JSON từ response |
 | Timezone của Outlook vs Python | Trung bình | Convert pywintypes.datetime → Python datetime |
 | Email body quá dài → vượt token limit | Cao | Truncate body trước khi gửi (3000-5000 chars) |
+| PST file path normalize (tránh mở trùng) | Trung bình | `os.path.normcase(os.path.abspath(path))` để so sánh |
+| Lambda closure late-binding | Trung bình | Dùng default arg: `lambda m=msg: messagebox.showerror(...)` |
+| Variable-length folder path (2-tuple vs 3-tuple) | Trung bình | Dùng `Tuple[str, ...]` thay vì fixed-length destructuring |
 
 ---
 
@@ -149,7 +217,9 @@ Một tính năng được coi là hoàn chỉnh khi:
 
 | Metric | Mục tiêu |
 |--------|---------|
-| Tỉ lệ phân loại chính xác | ≥ 85% |
+| Tỉ lệ phân loại email chính xác | ≥ 85% |
+| Tỉ lệ phát hiện spam chính xác | ≥ 90% |
 | Thời gian response mỗi tính năng | < 15 giây |
 | Tỉ lệ tạo task/event thành công | ≥ 95% |
+| Tỉ lệ di chuyển email thành công | ≥ 99% |
 | Không có crash trong demo 30 phút | 100% |

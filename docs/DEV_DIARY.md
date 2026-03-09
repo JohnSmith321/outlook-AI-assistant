@@ -141,6 +141,107 @@ Phát hiện một bug nhỏ: một số email (tự động generated) có body
 
 ---
 
+## Ngày 4 – Multi-PST & Spam/Newsletter/Organizer
+
+### Khám phá COM API cho multi-PST
+
+Yêu cầu mới: hỗ trợ nhiều PST file (archive, external). Tôi cần tìm hiểu COM API sâu hơn.
+
+**Vấn đề 1: Liệt kê PST**
+`namespace.Stores` là collection tất cả store đang mở — đây là con đường duy nhất để truy cập PST tùy ý thay vì chỉ default folders.
+
+**Vấn đề 2: Tạo/mở PST mới**
+Tìm thấy `namespace.AddStoreEx(path, olStoreUnicodeOnly=2)`. Nếu PST đã tồn tại sẽ mở lại, nếu chưa sẽ tạo mới. Tuy nhiên cần normalize path để tránh mở trùng:
+```python
+norm = os.path.normcase(os.path.abspath(pst_path))
+```
+
+**Vấn đề 3: Di chuyển email giữa PST**
+`item.Move(target_folder)` là cách duy nhất. Cần tìm đúng `target_folder` COM object, không thể pass path string.
+
+### Thiết kế Spam Cleaner
+
+Quyết định quan trọng: **một lần call Claude per email** hay **batch nhiều email một lần**?
+
+- Batch: tiết kiệm API calls nhưng prompt phức tạp hơn, JSON phức tạp hơn, lỗi một cái ảnh hưởng cả batch
+- Per-email: đơn giản, robust hơn, nhưng chậm hơn với inbox lớn
+
+Chọn **per-email** cho simplicity. Với inbox 50 email, mất khoảng 30-60 giây — chấp nhận được cho use case này.
+
+### Bug: Lambda closure trong passive PST check
+
+Phát hiện một bug tinh tế trong `_passive_pst_check`:
+
+```python
+# BUG: late-binding closure!
+for s in critical:
+    self.after(0, lambda: messagebox.showerror("...", f"...{s['name']}..."))
+    # 's' được capture by reference, không by value!
+```
+
+Khi lambda chạy, `s` có thể đã thay đổi hoặc là giá trị cuối cùng của vòng lặp.
+
+Fix bằng default argument binding:
+```python
+msg = f"⛔ {s['name'][:40]}\n{s['size_gb']:.1f} GB / ..."
+self.after(0, lambda m=msg: messagebox.showerror("PST quá lớn!", m))
+```
+
+**Bài học**: Python lambda closure capture biến theo tham chiếu (by reference), không theo giá trị (by value). Khi dùng lambda trong vòng lặp để schedule callbacks, luôn bind giá trị qua default argument.
+
+### Thiết kế Email Organizer – Variable-length folder path
+
+Ban đầu tôi viết:
+```python
+for (org_name, year), emails in plan.groups.items():
+    # Crash khi personal domain → 3-tuple (BrandName, SenderName, Year)!
+```
+
+Vấn đề: email từ company domain tạo path 2-level `(OrgName, Year)`, nhưng email từ personal domain (gmail, yahoo...) tạo path 3-level `(BrandName, SenderName, Year)`.
+
+Fix bằng variable-length key và spread:
+```python
+for path_parts, emails in plan.groups.items():
+    target_folder = self._outlook.get_or_create_folder_path(
+        store_id, [ORGANIZED_ROOT] + list(path_parts)
+    )
+```
+
+Và đổi type hint từ `Dict[Tuple[str, str], ...]` thành `Dict[Tuple[str, ...], ...]`.
+
+---
+
+## Ngày 5 – Archive Per-Year PST & Documentation
+
+### Archive: từ 1 file → per-year files
+
+Yêu cầu ban đầu: "archive vào 1 file PST".
+Yêu cầu sau clarify: "archive vào từng file theo năm 2023, 2022, 2021".
+
+Thay đổi thiết kế:
+- Thay `filedialog.asksaveasfilename()` (chọn 1 file) → `filedialog.askdirectory()` (chọn folder)
+- Loop qua từng năm, tạo `Outlook_Archive_{year}.pst` riêng
+
+```python
+for year, emails in sorted(plan.groups.items()):
+    pst_path = os.path.join(archive_dir, f"Outlook_Archive_{year}.pst")
+    store_id = self._outlook.get_or_open_pst(pst_path, f"Archive {year}")
+    year_folder = self._outlook.get_or_create_folder_path(store_id, ["Archive"])
+    for email in emails:
+        self._outlook.move_email(email.entry_id, None, year_folder)
+```
+
+**Lợi ích**: Dễ tìm email theo năm, tránh 1 file PST quá lớn, dễ backup riêng lẻ từng năm.
+
+### Cập nhật docs đồng bộ
+
+Sau khi thêm nhiều tính năng mới, nhận ra docs đang lệch với code thực tế. Bài học:
+- Cập nhật docs cùng lúc với code, không để sau
+- Kiểm tra consistency giữa README.md gốc, docs/README.md, ARCHITECTURE.md, TEST_PLAN.md, IMPLEMENTATION_PLAN.md
+- Mỗi tính năng mới cần: entry trong Implementation Plan, test case trong Test Plan, entry trong Dev Diary
+
+---
+
 ## Tổng kết – Bài học rút ra
 
 ### Kỹ thuật
@@ -149,18 +250,23 @@ Phát hiện một bug nhỏ: một số email (tự động generated) có body
 2. **Prompt Engineering**: JSON output cần "KHÔNG thêm markdown", luôn có fallback parser
 3. **Threading với tkinter**: Dùng `after(0, fn)` cho mọi UI update từ background thread
 4. **Streaming**: Dùng streaming cho responses dài, `get_final_message()` để lấy kết quả cuối
+5. **Lambda closure**: Dùng default arg `lambda m=msg: ...` khi schedule callbacks trong vòng lặp
+6. **Variable-length tuples**: Dùng `Tuple[str, ...]` khi key có thể có số lượng phần tử khác nhau
+7. **PST path normalization**: `os.path.normcase(os.path.abspath())` để tránh mở trùng PST
 
 ### Thiết kế
 
-5. **Data Classes**: Tách biệt domain objects (`EmailMessage`) khỏi service objects (`OutlookClient`)
-6. **Layered Architecture**: Mỗi layer có một trách nhiệm rõ ràng, dễ test và thay thế
-7. **Error Messages**: Lỗi kỹ thuật (`COM Error 0x80040119`) không có nghĩa với người dùng → wrap thành message thân thiện
+8. **Data Classes**: Tách biệt domain objects (`EmailMessage`) khỏi service objects (`OutlookClient`)
+9. **Layered Architecture**: Mỗi layer có một trách nhiệm rõ ràng, dễ test và thay thế
+10. **Error Messages**: Lỗi kỹ thuật (`COM Error 0x80040119`) không có nghĩa với người dùng → wrap thành message thân thiện
+11. **Preview before action**: Luôn hiển thị preview (số email sẽ bị di chuyển/xóa) trước khi thực hiện action không thể undo
 
 ### Về LLM nói chung
 
-8. **LLM không phải deterministic**: Cùng một prompt có thể cho output format khác nhau → luôn có fallback
-9. **Context matters**: Cho Claude biết ngày hôm nay, múi giờ, ngôn ngữ mong muốn → kết quả tốt hơn nhiều
-10. **Truncation is necessary**: Email dài có thể vượt quá token budget → cắt body xuống 3000-5000 chars, ưu tiên phần đầu
+12. **LLM không phải deterministic**: Cùng một prompt có thể cho output format khác nhau → luôn có fallback
+13. **Context matters**: Cho Claude biết ngày hôm nay, múi giờ, ngôn ngữ mong muốn → kết quả tốt hơn nhiều
+14. **Truncation is necessary**: Email dài có thể vượt quá token budget → cắt body xuống 3000-5000 chars, ưu tiên phần đầu
+15. **Per-email vs batch**: Per-email call đơn giản và robust hơn batch processing, ưu tiên simplicity
 
 ---
 
@@ -173,6 +279,9 @@ Phát hiện một bug nhỏ: một số email (tự động generated) có body
 - [ ] **Offline mode** – cache kết quả phân loại để không gọi API lại
 - [ ] **Keyboard shortcuts** – Ctrl+1 classify, Ctrl+2 task, v.v.
 - [ ] **Export results** – xuất tóm tắt và kế hoạch ngày ra file Word/PDF
+- [ ] **Undo archive** – cho phép khôi phục email đã archive
+- [ ] **Batch scan tối ưu** – gộp nhiều email vào 1 Claude call để tăng tốc spam scan
+- [ ] **Smart archive preview** – hiển thị sample email trong mỗi năm trước khi archive
 
 ---
 
@@ -181,5 +290,7 @@ Phát hiện một bug nhỏ: một số email (tự động generated) có body
 Dự án này là lần đầu tiên tôi kết hợp **Windows COM automation** với **LLM API** và GUI trong cùng một ứng dụng. Khó khăn nhất không phải là code AI mà là làm cho 3 hệ thống (Outlook COM, Claude API, tkinter) hoạt động hài hòa với nhau, đặc biệt là vấn đề threading.
 
 Claude Opus 4.6 thực sự ấn tượng trong việc hiểu context email tiếng Việt và trích xuất thông tin có cấu trúc. Prompt engineering không khó bằng tôi nghĩ — chỉ cần rõ ràng về format output và có fallback là đủ.
+
+Dự án phát triển từ 6 tính năng AI cơ bản thành 13 tính năng bao gồm cả quản lý inbox (spam, newsletter, organizer) và quản lý PST (archive theo năm, kiểm tra kích thước). Việc mở rộng scope này cho thấy tầm quan trọng của kiến trúc layered: thêm tính năng mới chỉ cần thêm module vào `features/` và button vào action bar, không cần sửa infrastructure layer.
 
 Tổng thể đây là một bài học thực tế quý giá về việc xây dựng **AI-augmented desktop application** trong môi trường doanh nghiệp thực.
