@@ -907,45 +907,48 @@ class OutlookAIApp(tk.Tk):
             )
             return
 
+        years = sorted(plan.groups.keys())
         preview = plan.display_preview()
+        year_files = "\n".join(f"  • Outlook_Archive_{y}.pst" for y in years)
         if not messagebox.askyesno(
             "Archive Email Cũ",
             f"{preview}\n\n"
-            f"Chọn file PST archive để lưu (tạo mới nếu chưa có).\n"
-            f"Tiếp tục?",
+            f"Mỗi năm sẽ được lưu vào một file PST riêng:\n{year_files}\n\n"
+            f"Chọn thư mục lưu các file PST archive.\nTiếp tục?",
         ):
             return
 
-        pst_path = filedialog.asksaveasfilename(
-            title="Chọn hoặc tạo file PST Archive",
-            defaultextension=".pst",
-            filetypes=[("Outlook Data File", "*.pst")],
-            initialfile="Outlook_Archive.pst",
+        archive_dir = filedialog.askdirectory(
+            title="Chọn thư mục lưu file PST Archive",
         )
-        if not pst_path:
+        if not archive_dir:
             return
 
-        self._run_in_thread(lambda: self._archive_thread(plan, pst_path))
+        self._run_in_thread(lambda: self._archive_thread(plan, archive_dir))
 
-    def _archive_thread(self, plan, pst_path: str) -> None:
+    def _archive_thread(self, plan, archive_dir: str) -> None:
         self._set_status("Đang archive email cũ...", FG_WARN)
         try:
-            # Open or create archive PST
-            archive_store_id = self._outlook.get_or_open_pst(pst_path, display_name="Archive")
-
             total = plan.total_emails()
             moved_total, fail_total = 0, 0
             done = 0
+            result_lines = []
 
             for year, emails in sorted(plan.groups.items()):
+                pst_path = os.path.join(archive_dir, f"Outlook_Archive_{year}.pst")
                 try:
-                    year_folder = self._outlook.get_or_create_folder_path(
-                        archive_store_id, [ARCHIVE_ROOT, year]
+                    store_id = self._outlook.get_or_open_pst(
+                        pst_path, display_name=f"Archive {year}"
                     )
-                except Exception:
+                    year_folder = self._outlook.get_or_create_folder_path(
+                        store_id, [ARCHIVE_ROOT]
+                    )
+                except Exception as exc:
                     fail_total += len(emails)
+                    result_lines.append(f"  ❌ {year}: lỗi tạo PST — {exc}")
                     continue
 
+                yr_moved, yr_fail = 0, 0
                 for email in emails:
                     ok = self._outlook.move_email(
                         email.entry_id,
@@ -954,11 +957,18 @@ class OutlookAIApp(tk.Tk):
                     )
                     if ok:
                         moved_total += 1
+                        yr_moved += 1
                     else:
                         fail_total += 1
+                        yr_fail += 1
                     done += 1
                     if done % 10 == 0:
                         self._set_status(f"Đang archive {done}/{total}...", FG_WARN)
+
+                result_lines.append(
+                    f"  📦 {year}: {yr_moved} email → Outlook_Archive_{year}.pst"
+                    + (f" ({yr_fail} lỗi)" if yr_fail else "")
+                )
 
             # Refresh local list
             archived_ids = {e.entry_id for emails in plan.groups.values() for e in emails}
@@ -969,9 +979,9 @@ class OutlookAIApp(tk.Tk):
                 f"📦 Archive xong!\n"
                 f"  Đã chuyển : {moved_total} email\n"
                 f"  Lỗi       : {fail_total} email\n"
-                f"  File PST  : {pst_path}\n\n"
-                f"Email cũ hơn {ARCHIVE_CUTOFF_YEARS} năm đã được lưu vào "
-                f"'{ARCHIVE_ROOT} / [Năm]' trong file archive."
+                f"  Thư mục   : {archive_dir}\n\n"
+                + "\n".join(result_lines)
+                + f"\n\nMỗi năm lưu vào file PST riêng trong thư mục '{ARCHIVE_ROOT}'."
             )
             self._set_status(f"Archive xong: {moved_total} email", FG_SUCCESS)
             # Check PST sizes after archiving

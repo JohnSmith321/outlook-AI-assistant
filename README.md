@@ -200,14 +200,21 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 > **Quan trọng**: AI luôn hỏi xác nhận trước khi di chuyển — không tự động move.
 
 #### 12. Archive Email Cũ
-> Chuyển email cũ hơn 2 năm vào file PST archive, lưu theo từng năm.
+> Chuyển email cũ hơn 2 năm vào các file PST riêng theo từng năm.
 
 1. Tải thư mục cần archive
 2. Nhấn **[📦 Archive Cũ]** → xem trước số lượng email theo năm
-3. Xác nhận → chọn hoặc tạo file PST archive (hộp thoại lưu file)
-4. Email cũ chuyển vào `Archive / [Năm]` trong file PST đã chọn
+3. Xác nhận → chọn **thư mục** lưu các file PST
+4. Ứng dụng tạo một file PST riêng cho mỗi năm:
+   ```
+   📁 Thư mục đã chọn/
+   ├── Outlook_Archive_2023.pst  (email năm 2023)
+   ├── Outlook_Archive_2022.pst  (email năm 2022)
+   └── Outlook_Archive_2021.pst  (email năm 2021)
+   ```
+5. Mỗi file PST được tự động thêm vào Outlook, email chuyển vào thư mục `Archive`
 
-> **Lưu ý**: File PST archive được tự động mở trong Outlook nếu chưa có.
+> **Lưu ý**: File PST được tự động mở trong Outlook nếu chưa có. Mỗi năm một file giúp dễ quản lý và backup riêng lẻ.
 
 #### 13. Kiểm tra PST
 > Xem kích thước tất cả file PST và nhận cảnh báo nếu gần đầy.
@@ -262,8 +269,8 @@ A: Kết quả chỉ tồn tại trong phiên làm việc hiện tại (lưu tro
 **Q: Newsletter folder được tạo ở đâu?**
 A: Trong cùng store (PST/tài khoản) với thư mục đang xem. Cấu trúc: `Newsletter / TênCôngTy` cho domain công ty, `Newsletter / Gmail / TênNgườiGửi` cho Gmail/Yahoo/... Thư mục con được tạo tự động nếu chưa có.
 
-**Q: Archive PST có tự động mở trong Outlook không?**
-A: Có. Khi archive, ứng dụng tự động thêm file PST vào Outlook profile qua COM. File sẽ xuất hiện trong danh sách thư mục Outlook với tên "Archive".
+**Q: Archive tạo bao nhiêu file PST?**
+A: Mỗi năm một file riêng — ví dụ email năm 2023 vào `Outlook_Archive_2023.pst`, năm 2022 vào `Outlook_Archive_2022.pst`. Tất cả được tạo trong thư mục bạn chọn và tự động thêm vào Outlook profile.
 
 **Q: Giới hạn kích thước PST là bao nhiêu?**
 A: Outlook hỗ trợ PST tối đa 50 GB (Unicode format). Ứng dụng cảnh báo ở **47 GB** và báo nguy hiểm ở **50 GB**. Nên dùng tính năng Archive để giữ PST dưới 40 GB.
