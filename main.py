@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import config
 from ai_client import AIClient
-from outlook_client import OutlookClient, EmailMessage
+from outlook_client import OutlookClient, EmailMessage, FolderInfo
 from features.email_classifier import EmailClassifier
 from features.task_creator import TaskCreator
 from features.calendar_creator import CalendarCreator
@@ -73,6 +73,8 @@ class OutlookAIApp(tk.Tk):
         self._outlook: OutlookClient | None = None
         self._emails: list[EmailMessage] = []
         self._selected_email: EmailMessage | None = None
+        self._folders: list[FolderInfo] = []
+        self._current_folder: FolderInfo | None = None
 
         # Build UI then boot services
         self._build_ui()
@@ -126,7 +128,7 @@ class OutlookAIApp(tk.Tk):
     def _build_email_list(self, parent: tk.Frame) -> None:
         hdr = tk.Frame(parent, bg=BG_MID)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text=" Hộp thư đến", font=FONT_TITLE, fg=FG_ACCENT, bg=BG_MID).pack(
+        tk.Label(hdr, text=" Thư mục", font=FONT_TITLE, fg=FG_ACCENT, bg=BG_MID).pack(
             side=tk.LEFT, padx=8, pady=6
         )
         tk.Button(
@@ -139,6 +141,26 @@ class OutlookAIApp(tk.Tk):
             bd=0,
             padx=8,
         ).pack(side=tk.RIGHT, padx=6, pady=4)
+
+        # Folder selector dropdown
+        folder_frame = tk.Frame(parent, bg=BG_PANEL)
+        folder_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
+        tk.Label(
+            folder_frame, text="📁", font=FONT_UI, bg=BG_PANEL, fg=FG_ACCENT
+        ).pack(side=tk.LEFT)
+        self._folder_var = tk.StringVar(value="Đang tải thư mục...")
+        self._folder_combo = ttk.Combobox(
+            folder_frame,
+            textvariable=self._folder_var,
+            font=FONT_UI,
+            state="readonly",
+            width=38,
+        )
+        style = ttk.Style()
+        style.configure("TCombobox", fieldbackground="#313244", background="#313244",
+                        foreground=FG_TEXT, selectbackground="#45475a")
+        self._folder_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+        self._folder_combo.bind("<<ComboboxSelected>>", self._on_folder_change)
 
         # Search bar
         sf = tk.Frame(parent, bg=BG_PANEL)
@@ -268,8 +290,49 @@ class OutlookAIApp(tk.Tk):
             self._set_status(str(exc), FG_ERROR)
             return
 
-        self._set_status("Sẵn sàng", FG_SUCCESS)
-        self._reload_emails()
+        self._set_status("Đang tải danh sách thư mục...", FG_WARN)
+        threading.Thread(target=self._load_folders_thread, daemon=True).start()
+
+    def _load_folders_thread(self) -> None:
+        try:
+            folders = self._outlook.get_all_folders(mail_only=True)
+            # Put Inbox folders first
+            inbox_folders = [f for f in folders if "inbox" in f.display_name.lower()
+                             or "hộp thư đến" in f.display_name.lower()
+                             or f.display_name.lower() in ("inbox", "hộp thư đến")]
+            other_folders = [f for f in folders if f not in inbox_folders]
+            self._folders = inbox_folders + other_folders
+
+            labels = [f.label() for f in self._folders]
+            self.after(0, self._populate_folder_combo, labels)
+
+            # Auto-select default inbox
+            default = self._outlook.get_default_inbox_info()
+            if default and self._folders:
+                # Find matching folder by entry_id
+                match = next(
+                    (f for f in self._folders if f.entry_id == default.entry_id),
+                    self._folders[0],
+                )
+                self._current_folder = match
+                self.after(0, self._folder_var.set, match.label())
+
+            self._set_status("Sẵn sàng", FG_SUCCESS)
+            self._reload_emails()
+        except Exception as exc:
+            self._set_status(f"Lỗi tải thư mục: {exc}", FG_ERROR)
+            # Fallback: just load default inbox
+            self._reload_emails()
+
+    def _populate_folder_combo(self, labels: list[str]) -> None:
+        self._folder_combo["values"] = labels
+
+    def _on_folder_change(self, _event=None) -> None:
+        selected_label = self._folder_var.get()
+        folder = next((f for f in self._folders if f.label() == selected_label), None)
+        if folder and folder != self._current_folder:
+            self._current_folder = folder
+            self._reload_emails()
 
     def _reload_emails(self) -> None:
         if not self._outlook:
@@ -279,9 +342,18 @@ class OutlookAIApp(tk.Tk):
     def _load_emails_thread(self) -> None:
         self._set_status("Đang tải email...", FG_WARN)
         try:
-            self._emails = self._outlook.get_inbox_emails(limit=config.EMAIL_LOAD_LIMIT)
+            if self._current_folder:
+                self._emails = self._outlook.get_emails_from_folder(
+                    self._current_folder, limit=config.EMAIL_LOAD_LIMIT
+                )
+                folder_label = self._current_folder.display_name
+            else:
+                self._emails = self._outlook.get_inbox_emails(limit=config.EMAIL_LOAD_LIMIT)
+                folder_label = "Inbox"
             self.after(0, self._populate_list, self._emails)
-            self._set_status(f"Đã tải {len(self._emails)} email", FG_SUCCESS)
+            self._set_status(
+                f"[{folder_label}] {len(self._emails)} email", FG_SUCCESS
+            )
         except Exception as exc:
             self._set_status(f"Lỗi tải email: {exc}", FG_ERROR)
 
@@ -496,9 +568,11 @@ class OutlookAIApp(tk.Tk):
             summarizer = EmailSummarizer(self._ai)
             email = self._selected_email
 
-            # Try to get thread; fall back to single email
+            # Try to get thread from current folder; fall back to single email
             if email.conversation_topic and self._outlook:
-                thread = self._outlook.get_thread_emails(email.conversation_topic)
+                thread = self._outlook.get_thread_emails(
+                    email.conversation_topic, folder_info=self._current_folder
+                )
                 if len(thread.messages) > 1:
                     result = summarizer.summarize_thread(thread)
                 else:

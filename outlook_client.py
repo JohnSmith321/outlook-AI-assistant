@@ -52,6 +52,21 @@ class EmailMessage:
 
 
 @dataclass
+class FolderInfo:
+    """Represents an Outlook folder from any PST/store."""
+    display_name: str        # e.g. "Inbox"
+    full_path: str           # e.g. "Viettel / Inbox / Projects"
+    store_name: str          # PST/account display name
+    entry_id: str            # folder EntryID for retrieval
+    store_id: str            # store EntryID (needed for GetFolderFromID)
+    item_count: int = 0      # number of items in folder
+
+    def label(self) -> str:
+        """Short label for the dropdown UI."""
+        return f"{self.store_name}  ›  {self.full_path}"
+
+
+@dataclass
 class EmailThread:
     topic: str
     messages: List[EmailMessage] = field(default_factory=list)
@@ -93,15 +108,116 @@ class OutlookClient:
         self._ns = self._app.GetNamespace("MAPI")
 
     # ------------------------------------------------------------------
+    # Folder enumeration (multi-PST / multi-account support)
+    # ------------------------------------------------------------------
+
+    def get_all_folders(self, mail_only: bool = True) -> List[FolderInfo]:
+        """
+        Return a flat list of all folders across every store (PST / account).
+
+        Args:
+            mail_only: If True, skip Calendar/Tasks/Contacts folders and
+                       only include folders that can hold mail items.
+        """
+        # olItemType constants for mail folders
+        _MAIL_TYPES = {0}   # olMailItem = 0
+
+        folders: List[FolderInfo] = []
+        for store in self._ns.Stores:
+            try:
+                store_name = store.DisplayName
+                store_id = store.StoreID
+                root = store.GetRootFolder()
+                self._recurse_folders(
+                    root, store_name, store_id,
+                    parent_path="", results=folders,
+                    mail_only=mail_only,
+                )
+            except Exception:
+                continue
+        return folders
+
+    def _recurse_folders(
+        self,
+        folder,
+        store_name: str,
+        store_id: str,
+        parent_path: str,
+        results: List[FolderInfo],
+        mail_only: bool,
+    ) -> None:
+        try:
+            name = folder.Name
+            path = f"{parent_path} / {name}" if parent_path else name
+
+            # Filter: only include folders that hold mail (DefaultItemType == 0)
+            try:
+                item_type = folder.DefaultItemType
+            except Exception:
+                item_type = -1
+
+            if not mail_only or item_type == 0:
+                try:
+                    count = folder.Items.Count
+                except Exception:
+                    count = 0
+                results.append(FolderInfo(
+                    display_name=name,
+                    full_path=path,
+                    store_name=store_name,
+                    entry_id=folder.EntryID,
+                    store_id=store_id,
+                    item_count=count,
+                ))
+
+            # Recurse into sub-folders
+            for sub in folder.Folders:
+                self._recurse_folders(
+                    sub, store_name, store_id, path, results, mail_only
+                )
+        except Exception:
+            pass
+
+    def get_default_inbox_info(self) -> Optional[FolderInfo]:
+        """Return FolderInfo for the default Inbox (fallback)."""
+        try:
+            inbox = self._ns.GetDefaultFolder(6)
+            store = inbox.Store
+            return FolderInfo(
+                display_name="Inbox",
+                full_path="Inbox",
+                store_name=store.DisplayName,
+                entry_id=inbox.EntryID,
+                store_id=store.StoreID,
+                item_count=inbox.Items.Count,
+            )
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # Email reading
     # ------------------------------------------------------------------
 
     def get_inbox_emails(self, limit: int = 50) -> List[EmailMessage]:
-        """Return the most recent *limit* emails from the Inbox."""
+        """Return the most recent *limit* emails from the default Inbox."""
         inbox = self._ns.GetDefaultFolder(6)  # olFolderInbox
-        items = inbox.Items
-        items.Sort("[ReceivedTime]", True)  # descending
+        return self._read_folder_items(inbox, limit)
 
+    def get_emails_from_folder(
+        self, folder_info: FolderInfo, limit: int = 50
+    ) -> List[EmailMessage]:
+        """Return the most recent *limit* emails from any folder across any store."""
+        try:
+            folder = self._ns.GetFolderFromID(folder_info.entry_id, folder_info.store_id)
+            return self._read_folder_items(folder, limit)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Cannot read folder '{folder_info.full_path}': {exc}"
+            ) from exc
+
+    def _read_folder_items(self, folder, limit: int) -> List[EmailMessage]:
+        items = folder.Items
+        items.Sort("[ReceivedTime]", True)  # newest first
         emails: List[EmailMessage] = []
         count = 0
         for item in items:
@@ -124,10 +240,27 @@ class OutlookClient:
         except Exception:
             return None
 
-    def get_thread_emails(self, conversation_topic: str, limit: int = 20) -> EmailThread:
-        """Return all emails in a conversation thread by topic."""
-        inbox = self._ns.GetDefaultFolder(6)
-        items = inbox.Items
+    def get_thread_emails(
+        self,
+        conversation_topic: str,
+        folder_info: Optional[FolderInfo] = None,
+        limit: int = 20,
+    ) -> EmailThread:
+        """
+        Return all emails in a conversation thread by topic.
+        Searches the given folder, or the default Inbox if none provided.
+        """
+        if folder_info:
+            try:
+                folder = self._ns.GetFolderFromID(
+                    folder_info.entry_id, folder_info.store_id
+                )
+            except Exception:
+                folder = self._ns.GetDefaultFolder(6)
+        else:
+            folder = self._ns.GetDefaultFolder(6)
+
+        items = folder.Items
         items.Sort("[ReceivedTime]", False)  # oldest first
 
         thread = EmailThread(topic=conversation_topic)
