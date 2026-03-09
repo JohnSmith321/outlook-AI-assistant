@@ -40,6 +40,10 @@ from features.calendar_creator import CalendarCreator
 from features.email_summarizer import EmailSummarizer
 from features.email_rewriter import EmailRewriter
 from features.scheduler import DailyScheduler
+from features.spam_cleaner import SpamCleaner, ScanResult
+from features.email_organizer import (
+    plan_organization, format_rules, ORGANIZED_ROOT
+)
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +79,9 @@ class OutlookAIApp(tk.Tk):
         self._selected_email: EmailMessage | None = None
         self._folders: list[FolderInfo] = []
         self._current_folder: FolderInfo | None = None
+
+        # --- Spam / newsletter scan state ---
+        self._scan_result: ScanResult | None = None
 
         # Build UI then boot services
         self._build_ui()
@@ -244,10 +251,13 @@ class OutlookAIApp(tk.Tk):
         self._output_text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
     def _build_action_bar(self) -> None:
-        bar = tk.Frame(self, bg=BG_MID)
-        bar.pack(fill=tk.X, padx=10, pady=(0, 8))
+        container = tk.Frame(self, bg=BG_MID)
+        container.pack(fill=tk.X, padx=10, pady=(0, 8))
 
-        buttons = [
+        # Row 1 – analysis features
+        row1 = tk.Frame(container, bg=BG_MID)
+        row1.pack(fill=tk.X)
+        row1_buttons = [
             ("Phân loại Email", self._run_classify, "#313244", FG_ACCENT),
             ("★ Phân loại tất cả", self._run_classify_all, "#1e3a5f", FG_ACCENT),
             ("Tạo Task", self._run_create_task, "#313244", FG_SUCCESS),
@@ -257,16 +267,33 @@ class OutlookAIApp(tk.Tk):
             ("Viết lại (EN)", lambda: self._run_rewrite("en"), "#313244", "#f9e2af"),
             ("Gợi ý lịch ngày", self._run_schedule, "#313244", "#a6e3a1"),
         ]
-        for label, cmd, bg, fg in buttons:
+        for label, cmd, bg, fg in row1_buttons:
             tk.Button(
-                bar, text=label, command=cmd,
+                row1, text=label, command=cmd,
                 font=FONT_UI, bg=bg, fg=fg,
                 activebackground="#45475a", activeforeground=fg,
-                bd=0, padx=12, pady=6, cursor="hand2",
-            ).pack(side=tk.LEFT, padx=4, pady=6)
+                bd=0, padx=10, pady=5, cursor="hand2",
+            ).pack(side=tk.LEFT, padx=3, pady=(5, 2))
 
-        self._progress = ttk.Progressbar(bar, mode="indeterminate", length=120)
-        self._progress.pack(side=tk.RIGHT, padx=10)
+        # Row 2 – management features
+        row2 = tk.Frame(container, bg=BG_MID)
+        row2.pack(fill=tk.X)
+        row2_buttons = [
+            ("🔍 Quét Spam/NL", self._run_spam_scan, "#3b1f1f", "#f38ba8"),
+            ("🗑️ Xóa Spam", self._run_delete_spam, "#3b1f1f", FG_ERROR),
+            ("📰 Chuyển Newsletter", self._run_move_newsletter, "#1f2d3b", "#89dceb"),
+            ("📂 Tổ chức Email", self._run_organize, "#1f3b2a", FG_SUCCESS),
+        ]
+        for label, cmd, bg, fg in row2_buttons:
+            tk.Button(
+                row2, text=label, command=cmd,
+                font=FONT_UI, bg=bg, fg=fg,
+                activebackground="#45475a", activeforeground=fg,
+                bd=0, padx=10, pady=5, cursor="hand2",
+            ).pack(side=tk.LEFT, padx=3, pady=(2, 5))
+
+        self._progress = ttk.Progressbar(row2, mode="indeterminate", length=120)
+        self._progress.pack(side=tk.RIGHT, padx=10, pady=(2, 5))
 
     # ------------------------------------------------------------------
     # Boot / Initialisation
@@ -625,6 +652,216 @@ class OutlookAIApp(tk.Tk):
         except Exception as exc:
             self._write_output(f"Lỗi: {exc}", error=True)
             self._set_status("Lỗi lên kế hoạch", FG_ERROR)
+
+    # ------------------------------------------------------------------
+    # Spam / Newsletter management
+    # ------------------------------------------------------------------
+
+    def _run_spam_scan(self) -> None:
+        if not self._ai or not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa khởi tạo xong.")
+            return
+        if not self._emails:
+            messagebox.showinfo("Không có email", "Danh sách email rỗng.")
+            return
+        self._run_in_thread(self._spam_scan_thread)
+
+    def _spam_scan_thread(self) -> None:
+        emails = list(self._emails)
+        total = len(emails)
+        cleaner = SpamCleaner(self._ai)
+
+        def on_progress(current: int, _total: int) -> None:
+            self._set_status(f"Đang quét {current}/{_total}...", FG_WARN)
+
+        try:
+            result = cleaner.scan(emails, progress_cb=on_progress)
+            self._scan_result = result
+            self._write_output(result.display())
+            self._set_status(
+                f"Quét xong: {len(result.spam_ids)} spam, "
+                f"{len(result.newsletter_ids)} newsletter",
+                FG_SUCCESS,
+            )
+        except Exception as exc:
+            self._write_output(f"Lỗi quét: {exc}", error=True)
+            self._set_status("Lỗi quét", FG_ERROR)
+
+    def _run_delete_spam(self) -> None:
+        if not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa sẵn sàng.")
+            return
+        if not self._scan_result or not self._scan_result.spam_ids:
+            messagebox.showinfo(
+                "Chưa quét",
+                "Chưa có kết quả quét.\nHãy nhấn [🔍 Quét Spam/NL] trước.",
+            )
+            return
+        count = len(self._scan_result.spam_ids)
+        if not messagebox.askyesno(
+            "Xác nhận xóa Spam",
+            f"Sẽ chuyển {count} email spam vào Deleted Items.\n\nTiếp tục?",
+        ):
+            return
+        self._run_in_thread(self._delete_spam_thread)
+
+    def _delete_spam_thread(self) -> None:
+        self._set_status("Đang xóa spam...", FG_WARN)
+        try:
+            ids = list(self._scan_result.spam_ids)
+            success, fail = self._outlook.delete_emails(ids)
+            # Remove deleted from local list & tree
+            deleted_set = set(ids[:success])
+            self._emails = [e for e in self._emails if e.entry_id not in deleted_set]
+            self.after(0, self._populate_list, self._emails)
+            self._scan_result.spam_ids.clear()
+            self._write_output(
+                f"🗑️ Đã xóa {success} email spam vào Deleted Items."
+                + (f"\n  ({fail} lỗi, không xóa được.)" if fail else "")
+            )
+            self._set_status(f"Đã xóa {success} spam", FG_SUCCESS)
+        except Exception as exc:
+            self._write_output(f"Lỗi xóa spam: {exc}", error=True)
+            self._set_status("Lỗi xóa spam", FG_ERROR)
+
+    def _run_move_newsletter(self) -> None:
+        if not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa sẵn sàng.")
+            return
+        if not self._scan_result or not self._scan_result.newsletter_ids:
+            messagebox.showinfo(
+                "Chưa quét",
+                "Chưa có kết quả quét.\nHãy nhấn [🔍 Quét Spam/NL] trước.",
+            )
+            return
+        count = len(self._scan_result.newsletter_ids)
+        if not messagebox.askyesno(
+            "Chuyển Newsletter",
+            f"Sẽ chuyển {count} email newsletter vào thư mục 'Newsletter'.\n\nTiếp tục?",
+        ):
+            return
+        self._run_in_thread(self._move_newsletter_thread)
+
+    def _move_newsletter_thread(self) -> None:
+        self._set_status("Đang chuyển newsletter...", FG_WARN)
+        try:
+            # Determine store: use current folder's store, fallback to default inbox store
+            store_id = None
+            if self._current_folder:
+                store_id = self._current_folder.store_id
+            else:
+                inbox = self._outlook.get_default_inbox_info()
+                if inbox:
+                    store_id = inbox.store_id
+            if not store_id:
+                raise RuntimeError("Không xác định được store để tạo thư mục.")
+
+            newsletter_folder = self._outlook.get_newsletter_folder(store_id)
+            ids = list(self._scan_result.newsletter_ids)
+            success, fail = self._outlook.move_emails(
+                ids, newsletter_folder.entry_id, newsletter_folder.store_id
+            )
+            # Remove moved from local list
+            moved_set = set(ids[:success])
+            self._emails = [e for e in self._emails if e.entry_id not in moved_set]
+            self.after(0, self._populate_list, self._emails)
+            self._scan_result.newsletter_ids.clear()
+            self._write_output(
+                f"📰 Đã chuyển {success} newsletter → '{newsletter_folder.full_path}'."
+                + (f"\n  ({fail} lỗi)" if fail else "")
+            )
+            self._set_status(f"Đã chuyển {success} newsletter", FG_SUCCESS)
+        except Exception as exc:
+            self._write_output(f"Lỗi chuyển newsletter: {exc}", error=True)
+            self._set_status("Lỗi chuyển newsletter", FG_ERROR)
+
+    # ------------------------------------------------------------------
+    # Email organizer
+    # ------------------------------------------------------------------
+
+    def _run_organize(self) -> None:
+        if not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa sẵn sàng.")
+            return
+        if not self._emails:
+            messagebox.showinfo("Không có email", "Danh sách email rỗng.")
+            return
+
+        # Build and preview the plan before committing
+        plan = plan_organization(self._emails)
+        preview = plan.display_preview()
+
+        if not messagebox.askyesno(
+            "Tổ chức Email",
+            f"{preview}\n\n"
+            f"Email sẽ được chuyển vào '{ORGANIZED_ROOT}/[Tổ chức]/[Năm]' "
+            f"trong thư mục gốc của store hiện tại.\n\n"
+            f"Tiếp tục?",
+        ):
+            return
+        self._run_in_thread(self._organize_thread)
+
+    def _organize_thread(self) -> None:
+        self._set_status("Đang tổ chức email...", FG_WARN)
+        try:
+            plan = plan_organization(self._emails)
+
+            store_id = None
+            if self._current_folder:
+                store_id = self._current_folder.store_id
+            else:
+                inbox = self._outlook.get_default_inbox_info()
+                if inbox:
+                    store_id = inbox.store_id
+            if not store_id:
+                raise RuntimeError("Không xác định được store.")
+
+            total = plan.total_emails()
+            moved_total, fail_total = 0, 0
+            done = 0
+
+            for (org_name, year), emails in plan.groups.items():
+                try:
+                    target_folder = self._outlook.get_or_create_folder_path(
+                        store_id, [ORGANIZED_ROOT, org_name, year]
+                    )
+                except Exception as exc:
+                    fail_total += len(emails)
+                    continue
+
+                for email in emails:
+                    ok = self._outlook.move_email(
+                        email.entry_id,
+                        target_folder.entry_id,
+                        target_folder.store_id,
+                    )
+                    if ok:
+                        moved_total += 1
+                    else:
+                        fail_total += 1
+                    done += 1
+                    if done % 10 == 0:
+                        self._set_status(f"Đang chuyển {done}/{total}...", FG_WARN)
+
+            # Remove all moved emails from local list
+            self._emails.clear()
+            self.after(0, self._populate_list, self._emails)
+
+            # Fetch and display Outlook rules
+            rules = self._outlook.get_outlook_rules()
+            rules_text = format_rules(rules)
+
+            self._write_output(
+                f"📂 Tổ chức xong!\n"
+                f"  Đã chuyển : {moved_total} email\n"
+                f"  Lỗi       : {fail_total} email\n"
+                f"  Thư mục   : {plan.folder_count()}\n\n"
+                + rules_text
+            )
+            self._set_status(f"Tổ chức xong: {moved_total} email", FG_SUCCESS)
+        except Exception as exc:
+            self._write_output(f"Lỗi tổ chức: {exc}", error=True)
+            self._set_status("Lỗi tổ chức", FG_ERROR)
 
     # ------------------------------------------------------------------
     # Helpers

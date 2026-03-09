@@ -343,3 +343,131 @@ class OutlookClient:
             return True
         except Exception as exc:
             raise RuntimeError(f"Failed to create calendar event: {exc}") from exc
+
+    # ------------------------------------------------------------------
+    # Email management (delete / move / folder creation)
+    # ------------------------------------------------------------------
+
+    def delete_emails(self, entry_ids: List[str]) -> tuple:
+        """
+        Move emails to Deleted Items (soft delete).
+        Returns (success_count, fail_count).
+        """
+        success, fail = 0, 0
+        for entry_id in entry_ids:
+            try:
+                item = self._ns.GetItemFromID(entry_id)
+                item.Delete()
+                success += 1
+            except Exception:
+                fail += 1
+        return success, fail
+
+    def move_email(
+        self,
+        entry_id: str,
+        target_entry_id: str,
+        target_store_id: str,
+    ) -> bool:
+        """Move a single email to a target folder. Returns True on success."""
+        try:
+            item = self._ns.GetItemFromID(entry_id)
+            target = self._ns.GetFolderFromID(target_entry_id, target_store_id)
+            item.Move(target)
+            return True
+        except Exception:
+            return False
+
+    def move_emails(
+        self,
+        entry_ids: List[str],
+        target_entry_id: str,
+        target_store_id: str,
+    ) -> tuple:
+        """Move multiple emails to a target folder. Returns (success, fail)."""
+        success, fail = 0, 0
+        for eid in entry_ids:
+            if self.move_email(eid, target_entry_id, target_store_id):
+                success += 1
+            else:
+                fail += 1
+        return success, fail
+
+    def get_or_create_folder_path(
+        self, store_id: str, path_parts: List[str]
+    ) -> FolderInfo:
+        """
+        Get or create a nested folder path under a store's root.
+
+        Args:
+            store_id:    StoreID of the target PST / account.
+            path_parts:  Folder names to traverse/create, e.g.
+                         ['Organized', 'Viettel', '2025']
+
+        Returns FolderInfo for the deepest folder in the path.
+        """
+        target_store = None
+        for store in self._ns.Stores:
+            if store.StoreID == store_id:
+                target_store = store
+                break
+        if target_store is None:
+            raise RuntimeError(f"Store not found: {store_id[:20]}...")
+
+        current = target_store.GetRootFolder()
+        for part in path_parts:
+            found = None
+            try:
+                for sub in current.Folders:
+                    if sub.Name == part:
+                        found = sub
+                        break
+            except Exception:
+                pass
+            current = found if found is not None else current.Folders.Add(part)
+
+        try:
+            count = current.Items.Count
+        except Exception:
+            count = 0
+
+        return FolderInfo(
+            display_name=current.Name,
+            full_path=" / ".join(path_parts),
+            store_name=target_store.DisplayName,
+            entry_id=current.EntryID,
+            store_id=target_store.StoreID,
+            item_count=count,
+        )
+
+    def get_newsletter_folder(self, store_id: str) -> FolderInfo:
+        """Get or create a 'Newsletter' subfolder directly under the store root."""
+        return self.get_or_create_folder_path(store_id, ["Newsletter"])
+
+    # ------------------------------------------------------------------
+    # Outlook Rules
+    # ------------------------------------------------------------------
+
+    def get_outlook_rules(self) -> List[dict]:
+        """
+        Return rule info dicts from the default store.
+        Each dict has: name, enabled, execution_order.
+        """
+        rules_info: List[dict] = []
+        try:
+            rules = self._ns.DefaultStore.GetRules()
+            for i in range(1, rules.Count + 1):
+                try:
+                    rule = rules.Item(i)
+                    rules_info.append(
+                        {
+                            "name": rule.Name,
+                            "enabled": bool(rule.Enabled),
+                            "execution_order": rule.ExecutionOrder,
+                        }
+                    )
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return rules_info
