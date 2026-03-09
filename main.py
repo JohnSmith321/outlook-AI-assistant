@@ -155,9 +155,9 @@ class OutlookAIApp(tk.Tk):
             bd=0,
         ).pack(fill=tk.X, ipady=4, padx=2)
 
-        # Treeview
-        cols = ("sender", "subject", "time")
-        self._tree = ttk.Treeview(parent, columns=cols, show="headings", selectmode="browse")
+        # Treeview  (extended = Ctrl/Shift multi-select)
+        cols = ("priority", "sender", "subject", "time")
+        self._tree = ttk.Treeview(parent, columns=cols, show="headings", selectmode="extended")
         style = ttk.Style()
         style.theme_use("clam")
         style.configure(
@@ -171,12 +171,14 @@ class OutlookAIApp(tk.Tk):
         style.configure("Treeview.Heading", background=BG_MID, foreground=FG_ACCENT, font=FONT_UI)
         style.map("Treeview", background=[("selected", "#45475a")])
 
+        self._tree.heading("priority", text="AI")
         self._tree.heading("sender", text="Người gửi")
         self._tree.heading("subject", text="Chủ đề")
         self._tree.heading("time", text="Thời gian")
-        self._tree.column("sender", width=140, minwidth=80)
-        self._tree.column("subject", width=240, minwidth=100)
-        self._tree.column("time", width=90, minwidth=70, anchor=tk.CENTER)
+        self._tree.column("priority", width=65, minwidth=65, anchor=tk.CENTER)
+        self._tree.column("sender", width=120, minwidth=80)
+        self._tree.column("subject", width=220, minwidth=100)
+        self._tree.column("time", width=85, minwidth=70, anchor=tk.CENTER)
 
         vsb = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -186,6 +188,9 @@ class OutlookAIApp(tk.Tk):
         self._tree.bind("<<TreeviewSelect>>", self._on_email_select)
         self._tree.tag_configure("unread", foreground="#89dceb", font=("Segoe UI", 10, "bold"))
         self._tree.tag_configure("urgent", foreground=FG_WARN)
+        self._tree.tag_configure("pri_urgent", foreground=FG_ERROR)
+        self._tree.tag_configure("pri_normal", foreground=FG_TEXT)
+        self._tree.tag_configure("pri_low", foreground="#6c7086")
 
     def _build_right_panel(self, parent: tk.Frame) -> None:
         # Email detail pane
@@ -222,6 +227,7 @@ class OutlookAIApp(tk.Tk):
 
         buttons = [
             ("Phân loại Email", self._run_classify, "#313244", FG_ACCENT),
+            ("★ Phân loại tất cả", self._run_classify_all, "#1e3a5f", FG_ACCENT),
             ("Tạo Task", self._run_create_task, "#313244", FG_SUCCESS),
             ("Tạo Lịch họp", self._run_create_meeting, "#313244", "#cba6f7"),
             ("Tóm tắt Thread", self._run_summarize, "#313244", "#89dceb"),
@@ -280,15 +286,27 @@ class OutlookAIApp(tk.Tk):
             self._set_status(f"Lỗi tải email: {exc}", FG_ERROR)
 
     def _populate_list(self, emails: list[EmailMessage]) -> None:
+        # Preserve existing priority labels across redraws
+        existing = {
+            self._tree.item(iid)["values"][0]: iid
+            for iid in self._tree.get_children()
+        } if self._tree.get_children() else {}
+        prior_map: dict[str, str] = {
+            iid: self._tree.set(iid, "priority")
+            for iid in self._tree.get_children()
+        }
+
         self._tree.delete(*self._tree.get_children())
         for e in emails:
             tag = "unread" if e.unread else ("urgent" if e.importance == 2 else "")
+            priority_label = prior_map.get(e.entry_id, "")
             self._tree.insert(
                 "", tk.END,
                 iid=e.entry_id,
                 values=(
-                    e.sender[:25],
-                    e.subject[:60],
+                    priority_label,
+                    e.sender[:22],
+                    e.subject[:55],
                     e.received_time.strftime("%d/%m %H:%M"),
                 ),
                 tags=(tag,),
@@ -306,15 +324,23 @@ class OutlookAIApp(tk.Tk):
     # Email selection
     # ------------------------------------------------------------------
 
-    def _on_email_select(self, _event=None) -> None:
+    def _get_selected_emails(self) -> list[EmailMessage]:
+        """Return EmailMessage objects for all currently selected rows."""
         sel = self._tree.selection()
-        if not sel:
+        return [e for e in self._emails if e.entry_id in sel]
+
+    def _on_email_select(self, _event=None) -> None:
+        emails = self._get_selected_emails()
+        if not emails:
             return
-        entry_id = sel[0]
-        email = next((e for e in self._emails if e.entry_id == entry_id), None)
-        if email:
-            self._selected_email = email
-            self._show_email_detail(email)
+        self._selected_email = emails[0]
+        if len(emails) == 1:
+            self._show_email_detail(emails[0])
+        else:
+            self._write_detail(
+                f"Đã chọn {len(emails)} email:\n"
+                + "\n".join(f"  • {e.subject[:70]}" for e in emails)
+            )
 
     def _show_email_detail(self, email: EmailMessage) -> None:
         text = (
@@ -330,18 +356,21 @@ class OutlookAIApp(tk.Tk):
     # Feature runners  (each spawns a background thread)
     # ------------------------------------------------------------------
 
-    def _guard(self) -> bool:
-        """Return True if services are ready and an email is selected."""
+    def _guard(self, require_single: bool = False) -> bool:
+        """Return True if services are ready and at least one email is selected."""
         if not self._ai or not self._outlook:
             messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa khởi tạo xong.")
             return False
-        if not self._selected_email:
-            messagebox.showinfo("Chọn email", "Vui lòng chọn một email trước.")
+        if not self._get_selected_emails():
+            messagebox.showinfo("Chọn email", "Vui lòng chọn ít nhất một email.")
+            return False
+        if require_single and len(self._get_selected_emails()) > 1:
+            messagebox.showinfo("Chọn 1 email", "Tính năng này chỉ xử lý 1 email. Vui lòng chọn 1 email.")
             return False
         return True
 
     def _run_classify(self) -> None:
-        if not self._guard():
+        if not self._guard(require_single=True):
             return
         self._run_in_thread(self._classify_thread)
 
@@ -350,11 +379,65 @@ class OutlookAIApp(tk.Tk):
         try:
             clf = EmailClassifier(self._ai)
             result = clf.classify(self._selected_email)
+            self._update_tree_priority(self._selected_email.entry_id, result)
             self._write_output(result.display())
             self._set_status("Phân loại xong", FG_SUCCESS)
         except Exception as exc:
             self._write_output(f"Lỗi: {exc}", error=True)
             self._set_status("Lỗi phân loại", FG_ERROR)
+
+    def _run_classify_all(self) -> None:
+        if not self._ai:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ AI chưa sẵn sàng.")
+            return
+        if not self._emails:
+            messagebox.showinfo("Không có email", "Danh sách email rỗng.")
+            return
+        self._run_in_thread(self._classify_all_thread)
+
+    def _classify_all_thread(self) -> None:
+        emails = self._emails
+        total = len(emails)
+        clf = EmailClassifier(self._ai)
+        lines = []
+        for i, email in enumerate(emails, 1):
+            self._set_status(f"Đang phân loại {i}/{total}...", FG_WARN)
+            try:
+                result = clf.classify(email)
+                self._update_tree_priority(email.entry_id, result)
+                lines.append(
+                    f"{i:>2}. [{result.priority:<6}] {email.subject[:50]}\n"
+                    f"      → {result.action} | {result.category} | {result.summary[:60]}"
+                )
+            except Exception as exc:
+                lines.append(f"{i:>2}. [LỖI] {email.subject[:50]} — {exc}")
+        self._write_output(
+            f"✅ Đã phân loại {total} email:\n{'─'*60}\n" + "\n".join(lines)
+        )
+        self._set_status(f"Phân loại xong {total} email", FG_SUCCESS)
+
+    def _update_tree_priority(self, entry_id: str, result) -> None:
+        """Update the priority column cell in the treeview (thread-safe via after)."""
+        label_map = {"Urgent": "🔴 Urgent", "Normal": "🟡 Normal", "Low": "🟢 Low"}
+        label = label_map.get(result.priority, result.priority)
+
+        def _do():
+            try:
+                self._tree.set(entry_id, "priority", label)
+                # Update row colour tag
+                existing_tags = list(self._tree.item(entry_id, "tags"))
+                for t in ("pri_urgent", "pri_normal", "pri_low"):
+                    if t in existing_tags:
+                        existing_tags.remove(t)
+                tag = {"Urgent": "pri_urgent", "Normal": "pri_normal", "Low": "pri_low"}.get(
+                    result.priority, ""
+                )
+                if tag:
+                    existing_tags.append(tag)
+                self._tree.item(entry_id, tags=existing_tags)
+            except Exception:
+                pass
+        self.after(0, _do)
 
     def _run_create_task(self) -> None:
         if not self._guard():
@@ -362,15 +445,22 @@ class OutlookAIApp(tk.Tk):
         self._run_in_thread(self._create_task_thread)
 
     def _create_task_thread(self) -> None:
-        self._set_status("Đang tạo task...", FG_WARN)
-        try:
-            creator = TaskCreator(self._ai, self._outlook)
-            result = creator.extract_and_create(self._selected_email)
-            self._write_output(result.display())
-            self._set_status(f"Đã tạo {result.created_count} task", FG_SUCCESS)
-        except Exception as exc:
-            self._write_output(f"Lỗi: {exc}", error=True)
-            self._set_status("Lỗi tạo task", FG_ERROR)
+        emails = self._get_selected_emails()
+        creator = TaskCreator(self._ai, self._outlook)
+        total_created, lines = 0, []
+        for i, email in enumerate(emails, 1):
+            if len(emails) > 1:
+                self._set_status(f"Đang tạo task {i}/{len(emails)}...", FG_WARN)
+            else:
+                self._set_status("Đang tạo task...", FG_WARN)
+            try:
+                result = creator.extract_and_create(email)
+                total_created += result.created_count
+                lines.append(f"📧 {email.subject[:55]}\n{result.display()}")
+            except Exception as exc:
+                lines.append(f"📧 {email.subject[:55]}\n  Lỗi: {exc}")
+        self._write_output("\n\n".join(lines))
+        self._set_status(f"Đã tạo {total_created} task từ {len(emails)} email", FG_SUCCESS)
 
     def _run_create_meeting(self) -> None:
         if not self._guard():
@@ -378,21 +468,25 @@ class OutlookAIApp(tk.Tk):
         self._run_in_thread(self._create_meeting_thread)
 
     def _create_meeting_thread(self) -> None:
-        self._set_status("Đang tạo lịch họp...", FG_WARN)
-        try:
-            creator = CalendarCreator(self._ai, self._outlook)
-            result = creator.extract_and_create(self._selected_email)
-            self._write_output(result.display())
-            self._set_status(
-                f"Đã tạo {result.created_count} sự kiện" if result.has_meeting else "Không có cuộc họp",
-                FG_SUCCESS,
-            )
-        except Exception as exc:
-            self._write_output(f"Lỗi: {exc}", error=True)
-            self._set_status("Lỗi tạo lịch", FG_ERROR)
+        emails = self._get_selected_emails()
+        creator = CalendarCreator(self._ai, self._outlook)
+        total_created, lines = 0, []
+        for i, email in enumerate(emails, 1):
+            if len(emails) > 1:
+                self._set_status(f"Đang tạo lịch {i}/{len(emails)}...", FG_WARN)
+            else:
+                self._set_status("Đang tạo lịch họp...", FG_WARN)
+            try:
+                result = creator.extract_and_create(email)
+                total_created += result.created_count
+                lines.append(f"📧 {email.subject[:55]}\n{result.display()}")
+            except Exception as exc:
+                lines.append(f"📧 {email.subject[:55]}\n  Lỗi: {exc}")
+        self._write_output("\n\n".join(lines))
+        self._set_status(f"Đã tạo {total_created} sự kiện từ {len(emails)} email", FG_SUCCESS)
 
     def _run_summarize(self) -> None:
-        if not self._guard():
+        if not self._guard(require_single=True):
             return
         self._run_in_thread(self._summarize_thread)
 
@@ -419,7 +513,7 @@ class OutlookAIApp(tk.Tk):
             self._set_status("Lỗi tóm tắt", FG_ERROR)
 
     def _run_rewrite(self, lang: str) -> None:
-        if not self._guard():
+        if not self._guard(require_single=True):
             return
         self._run_in_thread(lambda: self._rewrite_thread(lang))
 
