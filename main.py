@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, simpledialog
+from tkinter import ttk, scrolledtext, messagebox, simpledialog, filedialog
 import sys
 import os
 
@@ -42,7 +42,10 @@ from features.email_rewriter import EmailRewriter
 from features.scheduler import DailyScheduler
 from features.spam_cleaner import SpamCleaner, ScanResult
 from features.email_organizer import (
-    plan_organization, format_rules, ORGANIZED_ROOT
+    plan_organization, plan_archive, format_rules, format_pst_sizes,
+    get_newsletter_path, get_organize_path,
+    ORGANIZED_ROOT, ARCHIVE_ROOT, ARCHIVE_CUTOFF_YEARS,
+    PST_WARN_GB, PST_LIMIT_GB,
 )
 
 
@@ -82,6 +85,8 @@ class OutlookAIApp(tk.Tk):
 
         # --- Spam / newsletter scan state ---
         self._scan_result: ScanResult | None = None
+        # entry_id → EmailMessage snapshot taken at scan time
+        self._scanned_emails: dict[str, EmailMessage] = {}
 
         # Build UI then boot services
         self._build_ui()
@@ -283,6 +288,8 @@ class OutlookAIApp(tk.Tk):
             ("🗑️ Xóa Spam", self._run_delete_spam, "#3b1f1f", FG_ERROR),
             ("📰 Chuyển Newsletter", self._run_move_newsletter, "#1f2d3b", "#89dceb"),
             ("📂 Tổ chức Email", self._run_organize, "#1f3b2a", FG_SUCCESS),
+            ("📦 Archive Cũ", self._run_archive, "#2a2a1f", "#f9e2af"),
+            ("💾 Kiểm tra PST", self._run_check_pst, "#1f2a2a", FG_ACCENT),
         ]
         for label, cmd, bg, fg in row2_buttons:
             tk.Button(
@@ -381,6 +388,8 @@ class OutlookAIApp(tk.Tk):
             self._set_status(
                 f"[{folder_label}] {len(self._emails)} email", FG_SUCCESS
             )
+            # Passive PST size check on every folder load
+            self._passive_pst_check()
         except Exception as exc:
             self._set_status(f"Lỗi tải email: {exc}", FG_ERROR)
 
@@ -668,7 +677,6 @@ class OutlookAIApp(tk.Tk):
 
     def _spam_scan_thread(self) -> None:
         emails = list(self._emails)
-        total = len(emails)
         cleaner = SpamCleaner(self._ai)
 
         def on_progress(current: int, _total: int) -> None:
@@ -677,6 +685,8 @@ class OutlookAIApp(tk.Tk):
         try:
             result = cleaner.scan(emails, progress_cb=on_progress)
             self._scan_result = result
+            # Snapshot email objects for later use by newsletter mover
+            self._scanned_emails = {e.entry_id: e for e in emails}
             self._write_output(result.display())
             self._set_status(
                 f"Quét xong: {len(result.spam_ids)} spam, "
@@ -745,7 +755,6 @@ class OutlookAIApp(tk.Tk):
     def _move_newsletter_thread(self) -> None:
         self._set_status("Đang chuyển newsletter...", FG_WARN)
         try:
-            # Determine store: use current folder's store, fallback to default inbox store
             store_id = None
             if self._current_folder:
                 store_id = self._current_folder.store_id
@@ -756,18 +765,33 @@ class OutlookAIApp(tk.Tk):
             if not store_id:
                 raise RuntimeError("Không xác định được store để tạo thư mục.")
 
-            newsletter_folder = self._outlook.get_newsletter_folder(store_id)
             ids = list(self._scan_result.newsletter_ids)
-            success, fail = self._outlook.move_emails(
-                ids, newsletter_folder.entry_id, newsletter_folder.store_id
-            )
-            # Remove moved from local list
-            moved_set = set(ids[:success])
-            self._emails = [e for e in self._emails if e.entry_id not in moved_set]
+            success, fail = 0, 0
+            moved_ids: set[str] = set()
+
+            for i, entry_id in enumerate(ids, 1):
+                self._set_status(f"Đang chuyển newsletter {i}/{len(ids)}...", FG_WARN)
+                email = self._scanned_emails.get(entry_id)
+                if email is None:
+                    fail += 1
+                    continue
+                # Determine per-email folder: Newsletter / OrgName [/ SenderName]
+                path_parts = list(get_newsletter_path(email))
+                try:
+                    folder = self._outlook.get_or_create_folder_path(store_id, path_parts)
+                    if self._outlook.move_email(entry_id, folder.entry_id, folder.store_id):
+                        success += 1
+                        moved_ids.add(entry_id)
+                    else:
+                        fail += 1
+                except Exception:
+                    fail += 1
+
+            self._emails = [e for e in self._emails if e.entry_id not in moved_ids]
             self.after(0, self._populate_list, self._emails)
             self._scan_result.newsletter_ids.clear()
             self._write_output(
-                f"📰 Đã chuyển {success} newsletter → '{newsletter_folder.full_path}'."
+                f"📰 Đã chuyển {success} newsletter vào Newsletter / [Tổ chức] / [Người gửi]."
                 + (f"\n  ({fail} lỗi)" if fail else "")
             )
             self._set_status(f"Đã chuyển {success} newsletter", FG_SUCCESS)
@@ -820,10 +844,10 @@ class OutlookAIApp(tk.Tk):
             moved_total, fail_total = 0, 0
             done = 0
 
-            for (org_name, year), emails in plan.groups.items():
+            for path_parts, emails in plan.groups.items():
                 try:
                     target_folder = self._outlook.get_or_create_folder_path(
-                        store_id, [ORGANIZED_ROOT, org_name, year]
+                        store_id, [ORGANIZED_ROOT] + list(path_parts)
                     )
                 except Exception as exc:
                     fail_total += len(emails)
@@ -862,6 +886,162 @@ class OutlookAIApp(tk.Tk):
         except Exception as exc:
             self._write_output(f"Lỗi tổ chức: {exc}", error=True)
             self._set_status("Lỗi tổ chức", FG_ERROR)
+
+    # ------------------------------------------------------------------
+    # Archive old emails
+    # ------------------------------------------------------------------
+
+    def _run_archive(self) -> None:
+        if not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa sẵn sàng.")
+            return
+        if not self._emails:
+            messagebox.showinfo("Không có email", "Danh sách email rỗng.")
+            return
+
+        plan = plan_archive(self._emails, cutoff_years=ARCHIVE_CUTOFF_YEARS)
+        if not plan.groups:
+            messagebox.showinfo(
+                "Không có email cũ",
+                plan.display_preview(),
+            )
+            return
+
+        preview = plan.display_preview()
+        if not messagebox.askyesno(
+            "Archive Email Cũ",
+            f"{preview}\n\n"
+            f"Chọn file PST archive để lưu (tạo mới nếu chưa có).\n"
+            f"Tiếp tục?",
+        ):
+            return
+
+        pst_path = filedialog.asksaveasfilename(
+            title="Chọn hoặc tạo file PST Archive",
+            defaultextension=".pst",
+            filetypes=[("Outlook Data File", "*.pst")],
+            initialfile="Outlook_Archive.pst",
+        )
+        if not pst_path:
+            return
+
+        self._run_in_thread(lambda: self._archive_thread(plan, pst_path))
+
+    def _archive_thread(self, plan, pst_path: str) -> None:
+        self._set_status("Đang archive email cũ...", FG_WARN)
+        try:
+            # Open or create archive PST
+            archive_store_id = self._outlook.get_or_open_pst(pst_path, display_name="Archive")
+
+            total = plan.total_emails()
+            moved_total, fail_total = 0, 0
+            done = 0
+
+            for year, emails in sorted(plan.groups.items()):
+                try:
+                    year_folder = self._outlook.get_or_create_folder_path(
+                        archive_store_id, [ARCHIVE_ROOT, year]
+                    )
+                except Exception:
+                    fail_total += len(emails)
+                    continue
+
+                for email in emails:
+                    ok = self._outlook.move_email(
+                        email.entry_id,
+                        year_folder.entry_id,
+                        year_folder.store_id,
+                    )
+                    if ok:
+                        moved_total += 1
+                    else:
+                        fail_total += 1
+                    done += 1
+                    if done % 10 == 0:
+                        self._set_status(f"Đang archive {done}/{total}...", FG_WARN)
+
+            # Refresh local list
+            archived_ids = {e.entry_id for emails in plan.groups.values() for e in emails}
+            self._emails = [e for e in self._emails if e.entry_id not in archived_ids]
+            self.after(0, self._populate_list, self._emails)
+
+            self._write_output(
+                f"📦 Archive xong!\n"
+                f"  Đã chuyển : {moved_total} email\n"
+                f"  Lỗi       : {fail_total} email\n"
+                f"  File PST  : {pst_path}\n\n"
+                f"Email cũ hơn {ARCHIVE_CUTOFF_YEARS} năm đã được lưu vào "
+                f"'{ARCHIVE_ROOT} / [Năm]' trong file archive."
+            )
+            self._set_status(f"Archive xong: {moved_total} email", FG_SUCCESS)
+            # Check PST sizes after archiving
+            self._passive_pst_check()
+        except Exception as exc:
+            self._write_output(f"Lỗi archive: {exc}", error=True)
+            self._set_status("Lỗi archive", FG_ERROR)
+
+    # ------------------------------------------------------------------
+    # PST size monitoring
+    # ------------------------------------------------------------------
+
+    def _run_check_pst(self) -> None:
+        if not self._outlook:
+            messagebox.showwarning("Chưa sẵn sàng", "Dịch vụ chưa sẵn sàng.")
+            return
+        try:
+            sizes = self._outlook.get_store_sizes()
+            report = format_pst_sizes(sizes)
+            self._write_output(report)
+
+            # Show alert if any store exceeds warning threshold
+            alerts = [s for s in sizes if s["size_gb"] >= PST_WARN_GB]
+            if alerts:
+                lines = []
+                for s in alerts:
+                    level = "⛔ NGUY HIỂM" if s["size_gb"] >= PST_LIMIT_GB else "⚠️ CẢNH BÁO"
+                    lines.append(f"{level}: {s['name'][:40]} — {s['size_gb']:.1f} GB")
+                messagebox.showwarning(
+                    "Cảnh báo kích thước PST",
+                    "\n".join(lines)
+                    + f"\n\nFile PST trên {PST_LIMIT_GB:.0f} GB có thể bị lỗi."
+                    + "\nHãy archive hoặc nén PST ngay.",
+                )
+                self._set_status(
+                    f"⚠️ PST lớn: {alerts[0]['name'][:25]} {alerts[0]['size_gb']:.1f} GB",
+                    FG_ERROR,
+                )
+            else:
+                self._set_status("PST OK", FG_SUCCESS)
+        except Exception as exc:
+            self._write_output(f"Lỗi kiểm tra PST: {exc}", error=True)
+
+    def _passive_pst_check(self) -> None:
+        """Non-blocking PST size check — only shows a warning if thresholds exceeded."""
+        if not self._outlook:
+            return
+        try:
+            sizes = self._outlook.get_store_sizes()
+            critical = [s for s in sizes if s["size_gb"] >= PST_LIMIT_GB]
+            warn = [s for s in sizes if PST_WARN_GB <= s["size_gb"] < PST_LIMIT_GB]
+
+            if critical:
+                s = critical[0]
+                msg = (
+                    f"⛔ {s['name'][:40]}\n{s['size_gb']:.1f} GB / {PST_LIMIT_GB:.0f} GB giới hạn\n\n"
+                    f"File PST đang ở mức nguy hiểm, có nguy cơ bị hỏng dữ liệu.\n"
+                    f"Hãy archive hoặc nén PST ngay lập tức!"
+                )
+                self.after(0, lambda m=msg: messagebox.showerror("PST quá lớn!", m))
+            elif warn:
+                s = warn[0]
+                msg = (
+                    f"⚠️ {s['name'][:40]}\n{s['size_gb']:.1f} GB / {PST_LIMIT_GB:.0f} GB\n\n"
+                    f"File PST đang tiếp cận giới hạn {PST_LIMIT_GB:.0f} GB.\n"
+                    f"Hãy archive email cũ để giảm kích thước."
+                )
+                self.after(0, lambda m=msg: messagebox.showwarning("Cảnh báo kích thước PST", m))
+        except Exception:
+            pass  # Silent fail — passive check should never crash
 
     # ------------------------------------------------------------------
     # Helpers

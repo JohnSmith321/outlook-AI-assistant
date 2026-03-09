@@ -471,3 +471,78 @@ class OutlookClient:
         except Exception:
             pass
         return rules_info
+
+    # ------------------------------------------------------------------
+    # PST size monitoring
+    # ------------------------------------------------------------------
+
+    def get_store_sizes(self) -> List[dict]:
+        """
+        Return size info for every open PST / store.
+        Each dict: {name, path, size_gb, size_bytes}.
+        Stores without a FilePath (e.g. Exchange mailboxes) get size_gb = 0.
+        """
+        import os
+        result: List[dict] = []
+        for store in self._ns.Stores:
+            try:
+                name = store.DisplayName
+                try:
+                    path = store.FilePath or ""
+                except Exception:
+                    path = ""
+                size_bytes = 0
+                if path and os.path.exists(path):
+                    size_bytes = os.path.getsize(path)
+                result.append(
+                    {
+                        "name": name,
+                        "path": path,
+                        "size_bytes": size_bytes,
+                        "size_gb": size_bytes / (1024 ** 3),
+                    }
+                )
+            except Exception:
+                continue
+        return result
+
+    # ------------------------------------------------------------------
+    # Archive PST management
+    # ------------------------------------------------------------------
+
+    def get_or_open_pst(self, pst_path: str, display_name: str = "Archive") -> str:
+        """
+        Open an existing PST file or create a new one.
+        Returns the StoreID of the opened / created store.
+        The PST is added to the current Outlook profile.
+        """
+        import os
+
+        # Check if already open
+        norm_path = os.path.normcase(os.path.normpath(pst_path))
+        for store in self._ns.Stores:
+            try:
+                sp = store.FilePath or ""
+                if sp and os.path.normcase(os.path.normpath(sp)) == norm_path:
+                    return store.StoreID
+            except Exception:
+                continue
+
+        # Open or create
+        olStoreUnicodeOnly = 2
+        self._ns.AddStoreEx(pst_path, olStoreUnicodeOnly)
+
+        # Find the newly added store
+        for store in self._ns.Stores:
+            try:
+                sp = store.FilePath or ""
+                if sp and os.path.normcase(os.path.normpath(sp)) == norm_path:
+                    try:
+                        store.DisplayName = display_name
+                    except Exception:
+                        pass
+                    return store.StoreID
+            except Exception:
+                continue
+
+        raise RuntimeError(f"Cannot open or create PST: {pst_path}")
