@@ -7,6 +7,8 @@
 Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích hợp Claude (Anthropic).
 
 ## Tính năng
+
+**Phân tích & Soạn thảo**
 - **Chọn thư mục linh hoạt** — hỗ trợ nhiều tài khoản / file PST (Inbox, Viettel, Archive...)
 - Tự động phân loại email đơn lẻ hoặc **hàng loạt** (ưu tiên, danh mục, hành động)
 - Tạo Task Outlook từ một hoặc **nhiều email** cùng lúc
@@ -14,6 +16,14 @@ Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích
 - Tóm tắt luồng email có cấu trúc *(nâng cao)*
 - Viết lại email chuyên nghiệp (tiếng Việt / tiếng Anh) *(nâng cao)*
 - Gợi ý kế hoạch làm việc hàng ngày *(nâng cao)*
+
+**Quản lý & Dọn dẹp**
+- **Quét Spam/Newsletter** — AI phân loại từng email thành spam / newsletter / bình thường
+- **Xóa Spam** — chuyển email spam vào Deleted Items (cần xác nhận)
+- **Chuyển Newsletter** — tự động tạo thư mục `Newsletter / Tổ chức [/ Người gửi]` và phân loại
+- **Tổ chức Email** — xếp email vào `Organized / Tổ chức / Năm` (cần xác nhận trước khi di chuyển)
+- **Archive Email Cũ** — chuyển email > 2 năm vào file PST archive theo từng năm
+- **Kiểm tra PST** — theo dõi kích thước file PST, cảnh báo ở 47 GB, báo lỗi ở 50 GB
 
 ## Cài đặt nhanh
 
@@ -55,15 +65,17 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 │  📁 [Chọn thư mục ▼]    │                                        │
 │  🔍 [Search bar]        │  Chi tiết email được chọn              │
 │  ┌─────────────────────┐│  ─────────────────────────────────     │
-│  │Pri│ Sender │Subject ││                                        │
-│  │ - │ ...    │ ...    ││  Kết quả AI                            │
-│  │🔴 │ ...    │ ...    ││  ─────────────────────────────────     │
-│  │🟢 │ ...    │ ...    ││  Output từ tính năng AI                │
+│  │AI │ Người gửi│ Chủ đề││                                        │
+│  │🔴 │ ...      │ ...   ││  Kết quả AI                            │
+│  │🟡 │ ...      │ ...   ││  ─────────────────────────────────     │
+│  │🟢 │ ...      │ ...   ││  Output từ tính năng AI                │
 │  └─────────────────────┘│                                        │
 │  [Làm mới]              │                                        │
 ├─────────────────────────┴────────────────────────────────────────┤
 │ [Phân loại] [★ Phân loại tất cả] [Tạo Task] [Tạo Lịch]          │
 │ [Tóm tắt Thread] [Viết lại (VI)] [Viết lại (EN)] [📅 Lịch ngày] │
+│ [🔍 Quét Spam/NL] [🗑️ Xóa Spam] [📰 Chuyển Newsletter]          │
+│ [📂 Tổ chức Email] [📦 Archive Cũ] [💾 Kiểm tra PST]    [====]  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,7 +94,7 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 
 1. Click vào email trong danh sách
 2. Nhấn **[Phân loại Email]**
-3. Kết quả hiển thị trong khung phải và cột **Pri** trong danh sách:
+3. Kết quả hiển thị trong khung phải và cột **AI** trong danh sách:
    - 🔴 **Urgent** / 🟡 **Normal** / 🟢 **Low**
    - Danh mục: Work / Personal / Newsletter / Finance / HR / IT
    - Hành động: Reply-Needed / Meeting-Request / Task-Request / Read-Only
@@ -92,7 +104,7 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 
 1. Tải thư mục cần phân loại (dùng dropdown hoặc Làm mới)
 2. Nhấn **[★ Phân loại tất cả]**
-3. AI lần lượt phân tích từng email — cột **Pri** cập nhật real-time:
+3. AI lần lượt phân tích từng email — cột **AI** cập nhật real-time:
    - 🔴 Urgent · 🟡 Normal · 🟢 Low
 4. Kết quả lưu trong bộ nhớ phiên làm việc, không mất khi cuộn danh sách
 
@@ -145,6 +157,72 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 2. Nhập ghi chú bổ sung nếu có (họp cố định, deadline quan trọng...)
 3. Nhận lịch làm việc theo khung giờ buổi sáng / chiều / tối
 
+#### 8. Quét Spam / Newsletter
+> AI phân tích từng email trong danh sách và phân loại thành 3 nhóm.
+
+1. Tải thư mục cần quét
+2. Nhấn **[🔍 Quét Spam/NL]**
+3. AI lần lượt phân tích từng email, kết quả hiển thị khi xong:
+   - 🔴 Spam / Quảng cáo
+   - 📰 Newsletter / Bản tin
+   - ✅ Email bình thường
+4. Dùng **[🗑️ Xóa Spam]** hoặc **[📰 Chuyển Newsletter]** để xử lý
+
+> **Lưu ý**: Quét gọi AI cho mỗi email. Nên quét sau khi đã lọc thư mục cần xử lý.
+
+#### 9. Xóa Spam
+> Chuyển email spam vào Deleted Items (không xóa vĩnh viễn).
+
+1. Đã **Quét Spam/NL** trước
+2. Nhấn **[🗑️ Xóa Spam]** → hộp thoại xác nhận hiện số lượng
+3. Xác nhận → email spam chuyển vào Deleted Items
+4. Danh sách email tự động làm mới
+
+#### 10. Chuyển Newsletter
+> Tự động phân loại newsletter vào thư mục con theo tổ chức và người gửi.
+
+1. Đã **Quét Spam/NL** trước
+2. Nhấn **[📰 Chuyển Newsletter]** → xác nhận
+3. Ứng dụng tạo thư mục theo cấu trúc:
+   - Email từ domain công ty: `Newsletter / TênCôngTy`
+   - Email từ domain cá nhân (Gmail, Yahoo...): `Newsletter / Gmail / TênNgườiGửi`
+
+#### 11. Tổ chức Email
+> Sắp xếp email theo người gửi và năm vào thư mục `Organized`.
+
+1. Tải thư mục cần tổ chức
+2. Nhấn **[📂 Tổ chức Email]** → xem trước kế hoạch di chuyển
+3. **Xác nhận** → ứng dụng di chuyển email vào:
+   - Domain công ty: `Organized / TênCôngTy / Năm`
+   - Domain cá nhân: `Organized / Gmail / TênNgườiGửi / Năm`
+4. Sau khi hoàn tất, hiển thị danh sách Outlook Rules hiện có
+
+> **Quan trọng**: AI luôn hỏi xác nhận trước khi di chuyển — không tự động move.
+
+#### 12. Archive Email Cũ
+> Chuyển email cũ hơn 2 năm vào file PST archive, lưu theo từng năm.
+
+1. Tải thư mục cần archive
+2. Nhấn **[📦 Archive Cũ]** → xem trước số lượng email theo năm
+3. Xác nhận → chọn hoặc tạo file PST archive (hộp thoại lưu file)
+4. Email cũ chuyển vào `Archive / [Năm]` trong file PST đã chọn
+
+> **Lưu ý**: File PST archive được tự động mở trong Outlook nếu chưa có.
+
+#### 13. Kiểm tra PST
+> Xem kích thước tất cả file PST và nhận cảnh báo nếu gần đầy.
+
+1. Nhấn **[💾 Kiểm tra PST]**
+2. Kết quả hiển thị thanh tiến trình kích thước mỗi store:
+   ```
+   TênPST   [████████████░░░░░░░░]  30.5 GB (61%)
+   ```
+3. Cảnh báo tự động:
+   - ⚠️ **47 GB**: Sắp đầy, nên archive bớt email
+   - ⛔ **50 GB**: Nguy hiểm, Outlook có thể báo lỗi hoặc hỏng dữ liệu
+
+> Ứng dụng cũng tự động kiểm tra kích thước PST mỗi khi tải email (cảnh báo thụ động).
+
 ### Xử lý lỗi thường gặp
 
 | Thông báo | Nguyên nhân | Giải pháp |
@@ -154,6 +232,7 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 | `Vui lòng chọn một email trước` | Chưa chọn email | Click vào email trong danh sách |
 | `Dịch vụ chưa khởi tạo xong` | App đang boot | Chờ status bar chuyển xanh lá |
 | `Cannot read folder '...'` | PST bị detach hoặc lỗi | Kiểm tra Outlook đã load đủ PST chưa |
+| `Chưa có kết quả quét` | Chưa chạy Quét Spam/NL | Nhấn [🔍 Quét Spam/NL] trước |
 
 ---
 
@@ -163,13 +242,13 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 A: Có. Dropdown "Chọn thư mục" liệt kê tất cả thư mục từ mọi tài khoản và file PST đang mở trong Outlook — bao gồm Exchange, Gmail (qua IMAP), và file `.pst` thêm thủ công.
 
 **Q: Phân loại hàng loạt mất bao lâu?**
-A: Khoảng 2–5 giây mỗi email tùy độ dài. 50 email ≈ 2–4 phút. Kết quả hiện real-time trong cột Pri khi AI xử lý xong từng email.
+A: Khoảng 2–5 giây mỗi email tùy độ dài. 50 email ≈ 2–4 phút. Kết quả hiện real-time trong cột AI khi xử lý xong từng email.
 
 **Q: Task và lịch họp được tạo ở đâu?**
 A: Trực tiếp trong Outlook — Task vào **Outlook → Tasks**, lịch họp vào **Outlook → Calendar** của tài khoản mặc định.
 
 **Q: Dữ liệu email có gửi ra ngoài không?**
-A: Nội dung email (subject + body, tối đa ~3000 ký tự) được gửi đến Anthropic API để phân tích. Không lưu trên server của Anthropic sau khi xử lý. Xem [Anthropic Privacy Policy](https://www.anthropic.com/privacy).
+A: Nội dung email (subject + body, tối đa ~400 ký tự cho spam scan, ~3000 ký tự cho các tính năng khác) được gửi đến Anthropic API để phân tích. Không lưu trên server của Anthropic sau khi xử lý. Xem [Anthropic Privacy Policy](https://www.anthropic.com/privacy).
 
 **Q: Có thể dùng với file PST archive không?**
 A: Có, miễn là file PST đó đang được mở trong Outlook (File → Open & Export → Open Outlook Data File). Ứng dụng tự động phát hiện tất cả PST đang active.
@@ -179,6 +258,15 @@ A: Dropdown chỉ hiển thị thư mục chứa **email** (`DefaultItemType = 0
 
 **Q: Ứng dụng có lưu kết quả phân loại không?**
 A: Kết quả chỉ tồn tại trong phiên làm việc hiện tại (lưu trong RAM). Khi đóng ứng dụng, nhãn ưu tiên sẽ mất. Tính năng lưu persistent là roadmap tương lai.
+
+**Q: Newsletter folder được tạo ở đâu?**
+A: Trong cùng store (PST/tài khoản) với thư mục đang xem. Cấu trúc: `Newsletter / TênCôngTy` cho domain công ty, `Newsletter / Gmail / TênNgườiGửi` cho Gmail/Yahoo/... Thư mục con được tạo tự động nếu chưa có.
+
+**Q: Archive PST có tự động mở trong Outlook không?**
+A: Có. Khi archive, ứng dụng tự động thêm file PST vào Outlook profile qua COM. File sẽ xuất hiện trong danh sách thư mục Outlook với tên "Archive".
+
+**Q: Giới hạn kích thước PST là bao nhiêu?**
+A: Outlook hỗ trợ PST tối đa 50 GB (Unicode format). Ứng dụng cảnh báo ở **47 GB** và báo nguy hiểm ở **50 GB**. Nên dùng tính năng Archive để giữ PST dưới 40 GB.
 
 ---
 
@@ -190,13 +278,15 @@ Outlook_AI/
 ├── config.py            # Cấu hình
 ├── ai_client.py         # Claude API wrapper
 ├── outlook_client.py    # Outlook COM wrapper
-├── features/            # 6 feature modules
+├── features/            # Feature modules
 │   ├── email_classifier.py
 │   ├── task_creator.py
 │   ├── calendar_creator.py
 │   ├── email_summarizer.py
 │   ├── email_rewriter.py
-│   └── scheduler.py
+│   ├── scheduler.py
+│   ├── spam_cleaner.py   # Spam / newsletter scanner
+│   └── email_organizer.py # Organize, archive, PST monitor
 └── docs/                # Tài liệu dự án
 ```
 
