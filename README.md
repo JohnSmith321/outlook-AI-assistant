@@ -1,5 +1,9 @@
 # Outlook AI Assistant
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
+[![Claude](https://img.shields.io/badge/LLM-Claude%20Opus%204.6-orange.svg)](https://www.anthropic.com/)
+
 Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích hợp Claude (Anthropic).
 
 ## Tính năng
@@ -37,3 +41,11 @@ Outlook_AI/
 - **LLM**: Claude Opus 4.6 (Anthropic)
 - **Outlook integration**: pywin32 (COM/MAPI)
 - **GUI**: tkinter (dark theme)
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0**.
+See the [LICENSE](LICENSE) file for details.
+
+> You are free to use, modify, and distribute this software under the terms of GPL-3.0.
+> Any derivative work must also be distributed under the same license.
