@@ -242,6 +242,42 @@ Sau khi thêm nhiều tính năng mới, nhận ra docs đang lệch với code 
 
 ---
 
+## Ngày 6 – Tối ưu Token & Multi-model
+
+### Phân tích chi phí token
+
+Nhận ra spam scan đang rất tốn token: 50 email = 50 API calls Opus. Chi phí không hợp lý cho tác vụ đơn giản (chỉ cần phân loại spam/newsletter/normal).
+
+### 4 biện pháp tối ưu
+
+**1. Haiku cho tác vụ đơn giản**
+Thêm `chat_fast()` vào AIClient dùng Haiku 4.5 thay vì Opus. Haiku rẻ hơn ~60x, đủ thông minh cho classify và spam scan. Opus giữ cho tóm tắt, viết lại, lịch ngày.
+
+**2. Batch scan (10 email/call)**
+Gộp 10 email vào 1 prompt, Claude trả về JSON array. 50 email = 5 calls thay vì 50. Cần xử lý edge case: Claude trả về ít items hơn số email gửi → pad "normal".
+
+**3. Persistent cache**
+File `.scan_cache.json` lưu `entry_id → label`. Khi quét lại, email đã có trong cache bị bỏ qua hoàn toàn — 0 token. Cache tồn tại qua các session.
+
+**4. Truncate body**
+- Spam scan: 400 chars (spam nhận biết từ subject + vài dòng đầu)
+- Classify: 1500 chars (cần thêm context để phân loại priority/action)
+- Tóm tắt/viết lại: giữ 3000 chars (cần nội dung đầy đủ)
+
+### Kết quả ước tính
+
+| Trước | Sau | Tiết kiệm |
+|-------|-----|-----------|
+| 50 calls Opus | 5 calls Haiku + cache | ~99% chi phí cho spam scan |
+| 3000 chars/email classify | 1500 chars Haiku | ~85% chi phí cho classify |
+| Quét lại = quét mới | Cache hit = 0 token | 100% cho email đã quét |
+
+### Thiết kế cho multi-provider
+
+Thêm `chat_fast()` method tách biệt thay vì parameter. Lý do: sau này có thể thay Haiku bằng model nội bộ (Ollama/vLLM) mà không ảnh hưởng `chat()`. Tất cả feature modules gọi qua 2 method này, không import trực tiếp SDK.
+
+---
+
 ## Tổng kết – Bài học rút ra
 
 ### Kỹ thuật
@@ -253,6 +289,9 @@ Sau khi thêm nhiều tính năng mới, nhận ra docs đang lệch với code 
 5. **Lambda closure**: Dùng default arg `lambda m=msg: ...` khi schedule callbacks trong vòng lặp
 6. **Variable-length tuples**: Dùng `Tuple[str, ...]` khi key có thể có số lượng phần tử khác nhau
 7. **PST path normalization**: `os.path.normcase(os.path.abspath())` để tránh mở trùng PST
+8. **Multi-model strategy**: Dùng model rẻ (Haiku) cho tác vụ đơn giản, model mạnh (Opus) cho tác vụ phức tạp
+9. **Batch API calls**: Gộp nhiều items vào 1 prompt giảm latency và chi phí
+10. **Persistent cache**: Cache kết quả phân loại tránh gọi API lại cho cùng email
 
 ### Thiết kế
 

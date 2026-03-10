@@ -102,13 +102,17 @@ move_email(entry_id, store_id, folder_path) -> bool
 #### `ai_client.py` – Claude API Wrapper
 **Công nghệ**: `anthropic` Python SDK
 
-**Model**: `claude-opus-4-6`
-**Features used**: Basic messages, streaming (cho response dài)
+**Models**:
+- `claude-opus-4-6` — tác vụ phức tạp (tóm tắt, viết lại, lịch ngày)
+- `claude-haiku-4-5-20251001` — tác vụ đơn giản (phân loại, quét spam) — rẻ hơn ~60x
 
 **Interface**:
 ```python
-ai.chat(system=..., user=..., stream=False) -> str
+ai.chat(system=..., user=..., stream=False) -> str       # Opus
+ai.chat_fast(system=..., user=...) -> str                 # Haiku
 ```
+
+**Mở rộng sang model khác**: Chỉ cần sửa `ai_client.py` để gọi OpenAI-compatible API (Ollama, vLLM, LM Studio). Tất cả feature modules gọi qua `chat()` / `chat_fast()`, không import trực tiếp SDK.
 
 ### 3. Feature Layer – `features/`
 
@@ -123,7 +127,7 @@ Mỗi module thực hiện một hoặc nhiều tính năng độc lập. Patter
 **Phân tích & Soạn thảo (AI-driven)**:
 | Module | Input | Claude Output | Outlook Action |
 |--------|-------|---------------|----------------|
-| `email_classifier.py` | EmailMessage | JSON classification | Không |
+| `email_classifier.py` | EmailMessage | JSON classification (Haiku) | Không |
 | `task_creator.py` | EmailMessage | JSON task list | Tạo TaskItem |
 | `calendar_creator.py` | EmailMessage | JSON event list | Tạo AppointmentItem |
 | `email_summarizer.py` | EmailMessage / EmailThread | Plain text summary | Không |
@@ -133,7 +137,7 @@ Mỗi module thực hiện một hoặc nhiều tính năng độc lập. Patter
 **Quản lý & Dọn dẹp (hành động trực tiếp)**:
 | Module | Input | Claude Output | Outlook Action |
 |--------|-------|---------------|----------------|
-| `spam_cleaner.py` | List[EmailMessage] | JSON per-email label | Xóa / Di chuyển email |
+| `spam_cleaner.py` | List[EmailMessage] | JSON batch label (Haiku, 10/call, cached) | Xóa / Di chuyển email |
 | `email_organizer.py` | List[EmailMessage] | (không dùng Claude) | Di chuyển email vào folder theo sender/năm |
 
 **Hằng số quan trọng** (`features/email_organizer.py`):

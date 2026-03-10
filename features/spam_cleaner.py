@@ -16,8 +16,11 @@
 """
 Spam / newsletter classifier using Claude AI.
 
-Classifies each email as 'spam', 'newsletter', or 'normal'.
-Results are used by the GUI to offer delete / move actions.
+Optimizations:
+  - Uses Haiku (fast/cheap model) instead of Opus
+  - Batch scan: groups 10 emails per API call
+  - Persistent cache: skips emails already classified
+  - Truncated body: 400 chars max (enough for spam detection)
 """
 
 from __future__ import annotations
@@ -25,10 +28,35 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, List
 
 from outlook_client import EmailMessage
 from ai_client import AIClient
+import config
+
+# ---------------------------------------------------------------------------
+# Scan cache (persists across sessions)
+# ---------------------------------------------------------------------------
+
+_CACHE_PATH: Path = config.SCAN_CACHE_FILE
+
+
+def _load_cache() -> Dict[str, str]:
+    """Load entry_id → label cache from disk."""
+    try:
+        return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_cache(cache: Dict[str, str]) -> None:
+    """Persist cache to disk."""
+    try:
+        _CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -41,6 +69,7 @@ class ScanResult:
     newsletter_ids: List[str] = field(default_factory=list)
     normal_ids: List[str] = field(default_factory=list)
     classifications: Dict[str, str] = field(default_factory=dict)  # entry_id → type
+    cached_count: int = 0  # how many came from cache
 
     def display(self) -> str:
         lines = [
@@ -49,6 +78,8 @@ class ScanResult:
             f"  📰 Newsletter / Bản tin: {len(self.newsletter_ids)}",
             f"  ✅ Email bình thường   : {len(self.normal_ids)}",
         ]
+        if self.cached_count:
+            lines.append(f"  💾 Từ cache (không tốn token): {self.cached_count}")
         if self.spam_ids:
             lines.append("\nSpam được phát hiện:")
             for eid in self.spam_ids[:10]:
@@ -65,37 +96,58 @@ class ScanResult:
 
 
 # ---------------------------------------------------------------------------
-# Classifier
+# Batch classifier (Haiku, 10 emails per call)
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """Bạn là bộ lọc email thông minh. Phân loại email thành MỘT trong 3 loại:
+BATCH_SIZE = 10
+
+_SYSTEM_PROMPT = """Bạn là bộ lọc email thông minh. Phân loại TỪNG email thành MỘT trong 3 loại:
 - "spam"       : email rác, quảng cáo không liên quan, phishing, offer giả mạo
 - "newsletter" : bản tin định kỳ, thông báo từ dịch vụ đã đăng ký, marketing email từ thương hiệu đã biết
 - "normal"     : email công việc, cá nhân, thông báo quan trọng cần xử lý
 
-Chỉ trả về JSON, không giải thích thêm:
-{"type": "spam|newsletter|normal", "reason": "lý do ngắn (< 20 từ)"}"""
+Trả về JSON array, mỗi phần tử tương ứng với email cùng thứ tự:
+[{"id": 1, "type": "spam|newsletter|normal"}, ...]
+Chỉ trả về JSON, KHÔNG thêm markdown hay giải thích."""
 
 
-def _classify_one(email: EmailMessage, ai: AIClient) -> str:
-    """Return 'spam', 'newsletter', or 'normal' for a single email."""
-    user = (
+def _format_email_for_batch(idx: int, email: EmailMessage) -> str:
+    """Format one email for inclusion in a batch prompt."""
+    return (
+        f"--- Email {idx} ---\n"
         f"From: {email.sender} <{email.sender_email}>\n"
         f"Subject: {email.subject}\n"
-        f"Body (first 400 chars):\n{email.body[:400]}"
+        f"Body: {email.body[:400]}\n"
+    )
+
+
+def _classify_batch(emails: List[EmailMessage], ai: AIClient) -> List[str]:
+    """Classify a batch of emails in a single API call using Haiku."""
+    user = "\n".join(
+        _format_email_for_batch(i + 1, e) for i, e in enumerate(emails)
     )
     try:
-        raw = ai.chat(_SYSTEM_PROMPT, user)
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        raw = ai.chat_fast(_SYSTEM_PROMPT, user, max_tokens=1024)
+        # Extract JSON array
+        m = re.search(r"\[.*\]", raw, re.DOTALL)
         if m:
-            data = json.loads(m.group())
-            t = data.get("type", "normal")
-            if t in ("spam", "newsletter", "normal"):
-                return t
+            items = json.loads(m.group())
+            results = []
+            for item in items:
+                t = item.get("type", "normal")
+                results.append(t if t in ("spam", "newsletter", "normal") else "normal")
+            # Pad if Claude returned fewer items
+            while len(results) < len(emails):
+                results.append("normal")
+            return results[:len(emails)]
     except Exception:
         pass
-    return "normal"
+    return ["normal"] * len(emails)
 
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 class SpamCleaner:
     """Scan a list of emails and classify as spam / newsletter / normal."""
@@ -109,23 +161,48 @@ class SpamCleaner:
         progress_cb: Callable[[int, int], None] | None = None,
     ) -> ScanResult:
         """
-        Classify all emails. progress_cb(current, total) called after each one.
-        Returns a ScanResult with entry_ids grouped by type.
+        Classify all emails using batch calls + cache.
+        progress_cb(current, total) called after each batch.
         """
+        cache = _load_cache()
         result = ScanResult(total=len(emails))
 
-        for i, email in enumerate(emails, 1):
-            classification = _classify_one(email, self._ai)
-            result.classifications[email.entry_id] = classification
-
-            if classification == "spam":
-                result.spam_ids.append(email.entry_id)
-            elif classification == "newsletter":
-                result.newsletter_ids.append(email.entry_id)
+        # Split into cached and uncached
+        uncached: List[EmailMessage] = []
+        for email in emails:
+            if email.entry_id in cache:
+                classification = cache[email.entry_id]
+                result.classifications[email.entry_id] = classification
+                result.cached_count += 1
+                if classification == "spam":
+                    result.spam_ids.append(email.entry_id)
+                elif classification == "newsletter":
+                    result.newsletter_ids.append(email.entry_id)
+                else:
+                    result.normal_ids.append(email.entry_id)
             else:
-                result.normal_ids.append(email.entry_id)
+                uncached.append(email)
 
+        # Batch classify uncached emails
+        done = result.cached_count
+        for batch_start in range(0, len(uncached), BATCH_SIZE):
+            batch = uncached[batch_start:batch_start + BATCH_SIZE]
+            labels = _classify_batch(batch, self._ai)
+
+            for email, label in zip(batch, labels):
+                result.classifications[email.entry_id] = label
+                cache[email.entry_id] = label
+
+                if label == "spam":
+                    result.spam_ids.append(email.entry_id)
+                elif label == "newsletter":
+                    result.newsletter_ids.append(email.entry_id)
+                else:
+                    result.normal_ids.append(email.entry_id)
+
+            done += len(batch)
             if progress_cb:
-                progress_cb(i, len(emails))
+                progress_cb(done, len(emails))
 
+        _save_cache(cache)
         return result

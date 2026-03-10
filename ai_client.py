@@ -32,6 +32,7 @@ class AIClient:
     def __init__(self) -> None:
         self._client = anthropic.Anthropic(api_key=config.get_api_key())
         self._model = config.CLAUDE_MODEL
+        self._model_fast = config.CLAUDE_MODEL_FAST
         self._max_tokens = config.MAX_TOKENS
 
     def chat(
@@ -66,6 +67,25 @@ class AIClient:
 
         response = self._client.messages.create(
             model=self._model,
+            max_tokens=tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        for block in response.content:
+            if block.type == "text":
+                return block.text
+        return ""
+
+    def chat_fast(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Like chat() but uses the fast/cheap model (Haiku) for simple tasks."""
+        tokens = max_tokens or self._max_tokens
+        response = self._client.messages.create(
+            model=self._model_fast,
             max_tokens=tokens,
             system=system,
             messages=[{"role": "user", "content": user}],

@@ -129,10 +129,14 @@
 ## Giai đoạn 6: Spam/Newsletter/Organizer/Archive/PST Monitoring (Ngày 4–5)
 
 ### 6.1 Spam & Newsletter Scanner (`features/spam_cleaner.py`)
-- [x] `ScanResult` dataclass: spam_ids, newsletter_ids, normal_ids, classifications
+- [x] `ScanResult` dataclass: spam_ids, newsletter_ids, normal_ids, classifications, cached_count
 - [x] System prompt phân loại 3 loại: spam / newsletter / normal
-- [x] `SpamCleaner.scan(emails)` – gọi Claude cho từng email, parse JSON, regex fallback
-- [x] Thống kê kết quả (số lượng từng loại)
+- [x] `SpamCleaner.scan(emails)` – batch 10 email/call, dùng Haiku, persistent cache
+- [x] Batch scan: gộp 10 email vào 1 API call (50 email = 5 calls thay vì 50)
+- [x] Haiku model: dùng `chat_fast()` thay vì `chat()` — rẻ hơn ~60x
+- [x] Persistent cache: `.scan_cache.json` lưu entry_id → label, bỏ qua email đã quét
+- [x] Truncated body: 400 chars cho spam scan (đủ để phát hiện spam)
+- [x] Thống kê kết quả (số lượng từng loại + số email từ cache)
 - [x] GUI: nút "Quét Spam/Newsletter" gọi scan, hiển thị báo cáo tóm tắt
 
 **Test case**: Email quảng cáo → spam; email bản tin định kỳ → newsletter; email công việc → normal

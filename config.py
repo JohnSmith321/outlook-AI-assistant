@@ -35,11 +35,15 @@ def get_api_key() -> str:
     return key
 
 
-# Claude model to use throughout the app
-CLAUDE_MODEL = "claude-opus-4-6"
+# Claude models
+CLAUDE_MODEL = "claude-opus-4-6"            # complex tasks (summarize, rewrite, schedule)
+CLAUDE_MODEL_FAST = "claude-haiku-4-5-20251001"  # simple tasks (classify, spam scan)
 
 # Max tokens for Claude responses
 MAX_TOKENS = 4096
+
+# Spam scan cache file (persists results across sessions)
+SCAN_CACHE_FILE = Path(__file__).parent / ".scan_cache.json"
 
 # Number of emails to load from Inbox at startup
 EMAIL_LOAD_LIMIT = 50

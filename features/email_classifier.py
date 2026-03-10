@@ -84,10 +84,10 @@ class EmailClassifier:
             f"Người gửi: {email.sender} <{email.sender_email}>\n"
             f"Chủ đề: {email.subject}\n"
             f"Thời gian nhận: {email.received_time.strftime('%Y-%m-%d %H:%M')}\n"
-            f"Nội dung:\n{email.body[:3000]}"
+            f"Nội dung:\n{email.body[:1500]}"
         )
 
-        raw = self._ai.chat(system=_SYSTEM, user=user_prompt)
+        raw = self._ai.chat_fast(system=_SYSTEM, user=user_prompt)
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:

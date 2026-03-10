@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
-[![Claude](https://img.shields.io/badge/LLM-Claude%20Opus%204.6-orange.svg)](https://www.anthropic.com/)
+[![Claude](https://img.shields.io/badge/LLM-Claude%20Opus%204.6%20%2B%20Haiku%204.5-orange.svg)](https://www.anthropic.com/)
 
 Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích hợp Claude (Anthropic).
 
@@ -18,7 +18,7 @@ Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích
 - Gợi ý kế hoạch làm việc hàng ngày *(nâng cao)*
 
 **Quản lý & Dọn dẹp**
-- **Quét Spam/Newsletter** — AI phân loại từng email thành spam / newsletter / bình thường
+- **Quét Spam/Newsletter** — AI phân loại email thành spam / newsletter / bình thường (batch 10 email/lần, cache kết quả, dùng Haiku tiết kiệm token)
 - **Xóa Spam** — chuyển email spam vào Deleted Items (cần xác nhận)
 - **Chuyển Newsletter** — tự động tạo thư mục `Newsletter / Tổ chức [/ Người gửi]` và phân loại
 - **Tổ chức Email** — xếp email vào `Organized / Tổ chức / Năm` (cần xác nhận trước khi di chuyển)
@@ -256,13 +256,13 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 A: Có. Dropdown "Chọn thư mục" liệt kê tất cả thư mục từ mọi tài khoản và file PST đang mở trong Outlook — bao gồm Exchange, Gmail (qua IMAP), và file `.pst` thêm thủ công.
 
 **Q: Phân loại hàng loạt mất bao lâu?**
-A: Khoảng 2–5 giây mỗi email tùy độ dài. 50 email ≈ 2–4 phút. Kết quả hiện real-time trong cột AI khi xử lý xong từng email.
+A: Phân loại dùng Haiku (nhanh hơn Opus), khoảng 1–3 giây mỗi email. 50 email ≈ 1–2 phút. Kết quả hiện real-time trong cột AI khi xử lý xong từng email.
 
 **Q: Task và lịch họp được tạo ở đâu?**
 A: Trực tiếp trong Outlook — Task vào **Outlook → Tasks**, lịch họp vào **Outlook → Calendar** của tài khoản mặc định.
 
 **Q: Dữ liệu email có gửi ra ngoài không?**
-A: Nội dung email (subject + body, tối đa ~400 ký tự cho spam scan, ~3000 ký tự cho các tính năng khác) được gửi đến Anthropic API để phân tích. Không lưu trên server của Anthropic sau khi xử lý. Xem [Anthropic Privacy Policy](https://www.anthropic.com/privacy).
+A: Nội dung email (subject + body, tối đa ~400 ký tự cho spam scan, ~1500 ký tự cho phân loại, ~3000 ký tự cho tóm tắt/viết lại) được gửi đến Anthropic API để phân tích. Không lưu trên server của Anthropic sau khi xử lý. Xem [Anthropic Privacy Policy](https://www.anthropic.com/privacy).
 
 **Q: Có thể dùng với file PST archive không?**
 A: Có, miễn là file PST đó đang được mở trong Outlook (File → Open & Export → Open Outlook Data File). Ứng dụng tự động phát hiện tất cả PST đang active.
@@ -271,7 +271,7 @@ A: Có, miễn là file PST đó đang được mở trong Outlook (File → Ope
 A: Dropdown chỉ hiển thị thư mục chứa **email** (`DefaultItemType = 0`). Các thư mục Calendar, Tasks, Contacts bị ẩn vì không phù hợp để đọc email.
 
 **Q: Ứng dụng có lưu kết quả phân loại không?**
-A: Kết quả chỉ tồn tại trong phiên làm việc hiện tại (lưu trong RAM). Khi đóng ứng dụng, nhãn ưu tiên sẽ mất. Tính năng lưu persistent là roadmap tương lai.
+A: Kết quả quét spam/newsletter được lưu trong file `.scan_cache.json` (persistent). Khi quét lại, email đã phân loại trước đó sẽ được bỏ qua, không tốn token. Kết quả phân loại chi tiết (priority/category) chỉ tồn tại trong phiên làm việc hiện tại.
 
 **Q: Newsletter folder được tạo ở đâu?**
 A: Trong cùng store (PST/tài khoản) với thư mục đang xem. Cấu trúc: `Newsletter / TênCôngTy` cho domain công ty, `Newsletter / Gmail / TênNgườiGửi` cho Gmail/Yahoo/... Thư mục con được tạo tự động nếu chưa có.
@@ -281,6 +281,12 @@ A: Mỗi năm một file riêng — ví dụ email năm 2023 vào `Outlook_Archi
 
 **Q: Giới hạn kích thước PST là bao nhiêu?**
 A: Outlook hỗ trợ PST tối đa 50 GB (Unicode format). Ứng dụng cảnh báo ở **47 GB** và báo nguy hiểm ở **50 GB**. Nên dùng tính năng Archive để giữ PST dưới 40 GB.
+
+**Q: Ứng dụng dùng model AI nào?**
+A: Hai model — **Opus 4.6** cho tác vụ phức tạp (tóm tắt, viết lại, lịch ngày) và **Haiku 4.5** cho tác vụ đơn giản (phân loại, quét spam). Haiku rẻ hơn ~60x so với Opus. Cấu hình model trong `config.py`.
+
+**Q: Có thể dùng model AI nội bộ (Ollama, vLLM) thay Claude không?**
+A: Có thể. Tất cả AI calls đều đi qua `ai_client.py` (method `chat()` và `chat_fast()`). Chỉ cần sửa 1 file duy nhất này để chuyển sang OpenAI-compatible API (Ollama, LM Studio, vLLM...).
 
 ---
 
@@ -306,7 +312,7 @@ Outlook_AI/
 
 ## Tech Stack
 - **Python** 3.10+
-- **LLM**: Claude Opus 4.6 (Anthropic)
+- **LLM**: Claude Opus 4.6 (phức tạp) + Haiku 4.5 (đơn giản) — Anthropic
 - **Outlook integration**: pywin32 (COM/MAPI) — hỗ trợ multi-PST
 - **GUI**: tkinter (dark theme, Catppuccin palette)
 
