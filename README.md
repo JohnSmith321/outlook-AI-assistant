@@ -194,7 +194,7 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 2. Nhấn **[📂 Tổ chức Email]** → xem trước kế hoạch di chuyển
 3. **Xác nhận** → ứng dụng di chuyển email vào:
    - Domain công ty: `Organized / TênCôngTy / Năm`
-   - Domain cá nhân: `Organized / Gmail / TênNgườiGửi / Năm`
+   - Domain cá nhân: `Organized / Gmail / localpart / Năm` (localpart = phần trước @ của email)
 4. Sau khi hoàn tất, hiển thị danh sách Outlook Rules hiện có
 
 > **Quan trọng**: AI luôn hỏi xác nhận trước khi di chuyển — không tự động move.
@@ -205,14 +205,21 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 1. Tải thư mục cần archive
 2. Nhấn **[📦 Archive Cũ]** → xem trước số lượng email theo năm
 3. Xác nhận → chọn **thư mục** lưu các file PST
-4. Ứng dụng tạo một file PST riêng cho mỗi năm:
+4. Ứng dụng tạo một file PST riêng cho mỗi năm, email phân theo người gửi:
    ```
    📁 Thư mục đã chọn/
-   ├── Outlook_Archive_2023.pst  (email năm 2023)
-   ├── Outlook_Archive_2022.pst  (email năm 2022)
-   └── Outlook_Archive_2021.pst  (email năm 2021)
+   ├── Outlook_Archive_2023.pst
+   │   └── Archive/
+   │       ├── Viettel/           (email từ @viettel.vn)
+   │       └── Gmail/
+   │           ├── abc/           (abc@gmail.com)
+   │           └── xyz/           (xyz@gmail.com)
+   ├── Outlook_Archive_2022.pst
+   │   └── Archive/
+   │       └── ...
+   └── Outlook_Archive_2021.pst
    ```
-5. Mỗi file PST được tự động thêm vào Outlook, email chuyển vào thư mục `Archive`
+5. Mỗi file PST được tự động thêm vào Outlook, email phân folder theo sender (dùng email address, không dùng display name)
 
 > **Lưu ý**: File PST được tự động mở trong Outlook nếu chưa có. Mỗi năm một file giúp dễ quản lý và backup riêng lẻ.
 

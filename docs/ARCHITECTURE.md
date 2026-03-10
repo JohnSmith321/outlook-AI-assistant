@@ -212,8 +212,10 @@ User click "Archive Email cũ"
         → For each year in plan.groups:
             → pst_path = archive_dir / "Outlook_Archive_{year}.pst"
             → store_id = OutlookClient.get_or_open_pst(pst_path, f"Archive {year}")
-            → year_folder = get_or_create_folder_path(store_id, ["Archive"])
-            → For each email: move_email(entry_id, store_id=None, folder=year_folder)
+            → For each email:
+                → rel_path = _get_organize_rel_path(email)  (e.g. ("Gmail","abc") or ("Viettel",))
+                → target = get_or_create_folder_path(store_id, ["Archive"] + rel_path[:-1])
+                → move_email(entry_id, target)
 ```
 
 ---

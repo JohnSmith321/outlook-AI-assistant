@@ -241,9 +241,10 @@ Kết quả mong đợi: Phân loại là `newsletter`
 | 3 | Hộp thoại chọn thư mục xuất hiện | `filedialog.askdirectory()` |
 | 4 | Chọn thư mục và xác nhận | Progress bar chạy |
 | 5 | Kiểm tra thư mục đã chọn | Xuất hiện file `Outlook_Archive_2023.pst` |
-| 6 | Mở file PST trong Outlook | Có folder `Archive/` chứa email năm 2023 |
-| 7 | Email năm 2022 trong PST 2023 | Không có (mỗi PST chỉ chứa đúng năm đó) |
-| 8 | Hủy chọn thư mục | Không có file nào được tạo |
+| 6 | Mở file PST trong Outlook | Có folder `Archive/TênCôngTy/` hoặc `Archive/Gmail/localpart/` |
+| 7 | Email cùng sender trong 1 folder | Không tạo folder trùng (dùng email address, không dùng display name) |
+| 8 | Email năm 2022 trong PST 2023 | Không có (mỗi PST chỉ chứa đúng năm đó) |
+| 9 | Hủy chọn thư mục | Không có file nào được tạo |
 
 ---
 

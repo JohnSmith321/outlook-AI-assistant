@@ -160,10 +160,12 @@
 - [x] Xử lý timezone-aware datetime khi so sánh với cutoff
 - [x] GUI: nút "Archive Email cũ" → preview danh sách file PST → chọn thư mục → di chuyển
 - [x] Một file PST riêng cho mỗi năm: `Outlook_Archive_{year}.pst`
-- [x] Email trong mỗi PST nằm trong folder `Archive/`
+- [x] Email trong mỗi PST phân folder theo sender: `Archive/CôngTy/` hoặc `Archive/Brand/localpart/`
+- [x] Dùng email address (local part) thay vì display name để tránh tạo folder trùng
+- [x] Folder cache tránh tạo lại folder trùng lặp trong cùng 1 lần archive
 - [x] `filedialog.askdirectory()` cho user chọn thư mục xuất
 
-**Test case**: Email năm 2023 và 2022 → tạo `Outlook_Archive_2023.pst` và `Outlook_Archive_2022.pst`
+**Test case**: Email từ abc@gmail.com năm 2023 → `Outlook_Archive_2023.pst/Archive/Gmail/abc/`
 
 ### 6.5 Kiểm tra kích thước PST (`features/email_organizer.py`)
 - [x] `format_pst_sizes(sizes)` – render bảng + bar chart ASCII cho từng PST
