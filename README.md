@@ -28,12 +28,12 @@ Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích
 ## Cài đặt nhanh
 
 ```bash
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env   # Điền ANTHROPIC_API_KEY
 python main.py
 ```
-
-Xem [docs/README.md](docs/README.md) để biết hướng dẫn chi tiết.
 
 ---
 
