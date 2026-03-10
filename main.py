@@ -43,7 +43,7 @@ from features.scheduler import DailyScheduler
 from features.spam_cleaner import SpamCleaner, ScanResult
 from features.email_organizer import (
     plan_organization, plan_archive, format_rules, format_pst_sizes,
-    get_newsletter_path, get_organize_path,
+    get_newsletter_path, get_organize_path, _get_organize_rel_path,
     ORGANIZED_ROOT, ARCHIVE_ROOT, ARCHIVE_CUTOFF_YEARS,
     PST_WARN_GB, PST_LIMIT_GB,
 )
@@ -949,11 +949,25 @@ class OutlookAIApp(tk.Tk):
                     continue
 
                 yr_moved, yr_fail = 0, 0
+                # Cache folders per sender path to avoid repeated creation
+                _folder_cache: dict = {}
                 for email in emails:
+                    rel_path = _get_organize_rel_path(email)
+                    folder_key = rel_path[:-1]  # exclude year (already in PST name)
+                    if folder_key not in _folder_cache:
+                        try:
+                            _folder_cache[folder_key] = (
+                                self._outlook.get_or_create_folder_path(
+                                    store_id, [ARCHIVE_ROOT] + list(folder_key)
+                                )
+                            )
+                        except Exception:
+                            _folder_cache[folder_key] = year_folder  # fallback
+                    target = _folder_cache[folder_key]
                     ok = self._outlook.move_email(
                         email.entry_id,
-                        year_folder.entry_id,
-                        year_folder.store_id,
+                        target.entry_id,
+                        target.store_id,
                     )
                     if ok:
                         moved_total += 1

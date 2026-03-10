@@ -96,6 +96,18 @@ def extract_domain(sender_email: str) -> str:
     return "unknown"
 
 
+def _extract_local_part(sender_email: str) -> str:
+    """Extract the local part (before @) from an email address."""
+    addr = sender_email.strip().lower()
+    m = re.search(r"<([^>]+)>", addr)
+    if m:
+        addr = m.group(1)
+    if "@" in addr:
+        local = addr.split("@", 1)[0].strip()
+        return clean_folder_name(local) if local else "unknown"
+    return "unknown"
+
+
 def is_personal_domain(domain: str) -> bool:
     """Return True if the domain is a personal webmail provider."""
     return domain in _PERSONAL_DOMAINS
@@ -140,8 +152,8 @@ def _get_organize_rel_path(email: EmailMessage) -> Tuple[str, ...]:
     year = str(email.received_time.year) if email.received_time else "Unknown"
 
     if is_personal_domain(domain):
-        sender = clean_folder_name(email.sender)
-        return (org, sender, year)
+        local = _extract_local_part(email.sender_email)
+        return (org, local, year)
     return (org, year)
 
 
@@ -160,8 +172,8 @@ def get_newsletter_path(email: EmailMessage) -> Tuple[str, ...]:
     org = domain_to_folder_name(domain)
 
     if is_personal_domain(domain):
-        sender = clean_folder_name(email.sender)
-        return ("Newsletter", org, sender)
+        local = _extract_local_part(email.sender_email)
+        return ("Newsletter", org, local)
     return ("Newsletter", org)
 
 
