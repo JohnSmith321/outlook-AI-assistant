@@ -3,8 +3,9 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 [![Claude](https://img.shields.io/badge/LLM-Claude%20Opus%204.6%20%2B%20Haiku%204.5-orange.svg)](https://www.anthropic.com/)
+[![OpenAI Compatible](https://img.shields.io/badge/OpenAI--Compatible-Ollama%20%7C%20LM%20Studio%20%7C%20Groq-blue.svg)](https://ollama.com/)
 
-Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích hợp Claude (Anthropic).
+Trợ lý AI tự động hóa công việc email trong Microsoft Outlook. Hỗ trợ Claude (Anthropic) và mọi API tương thích OpenAI (Ollama, LM Studio, OpenRouter, Groq...).
 
 ## Tính năng
 
@@ -31,9 +32,32 @@ Trợ lý AI tự động hóa công việc email trong Microsoft Outlook, tích
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env   # Điền ANTHROPIC_API_KEY
+copy .env.example .env   # Cấu hình AI provider (xem bên dưới)
 python main.py
 ```
+
+### Cấu hình AI Provider
+
+**Lựa chọn A: Anthropic Claude (cần API key)**
+```env
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Lựa chọn B: Ollama — miễn phí, chạy local (không cần API key)**
+```bash
+# Cài Ollama từ https://ollama.com rồi tải model:
+ollama pull qwen2.5:14b
+```
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=qwen2.5:14b
+```
+
+**Lựa chọn C: Các provider khác (LM Studio, Groq, OpenRouter...)**
+> Xem `.env.example` để biết cấu hình chi tiết cho từng provider.
 
 ---
 
@@ -41,7 +65,7 @@ python main.py
 
 ### Yêu cầu trước khi chạy
 - Microsoft Outlook đã cài đặt và **đang mở**
-- File `.env` đã có `ANTHROPIC_API_KEY`
+- File `.env` đã cấu hình AI provider (Anthropic API key hoặc Ollama/OpenAI-compatible)
 
 ### Khởi động ứng dụng
 
@@ -241,7 +265,7 @@ Thanh trạng thái (góc phải trên) chuyển sang **xanh lá** = sẵn sàng
 
 | Thông báo | Nguyên nhân | Giải pháp |
 |-----------|-------------|-----------|
-| `ANTHROPIC_API_KEY is not set` | Chưa tạo file `.env` | Copy `.env.example` → `.env`, điền API key |
+| `API key is not set` | Chưa tạo file `.env` | Copy `.env.example` → `.env`, cấu hình provider |
 | `Lỗi kết nối Outlook` | Outlook chưa mở | Mở Microsoft Outlook trước khi chạy |
 | `Vui lòng chọn một email trước` | Chưa chọn email | Click vào email trong danh sách |
 | `Dịch vụ chưa khởi tạo xong` | App đang boot | Chờ status bar chuyển xanh lá |
@@ -283,10 +307,10 @@ A: Mỗi năm một file riêng — ví dụ email năm 2023 vào `Outlook_Archi
 A: Outlook hỗ trợ PST tối đa 50 GB (Unicode format). Ứng dụng cảnh báo ở **47 GB** và báo nguy hiểm ở **50 GB**. Nên dùng tính năng Archive để giữ PST dưới 40 GB.
 
 **Q: Ứng dụng dùng model AI nào?**
-A: Hai model — **Opus 4.6** cho tác vụ phức tạp (tóm tắt, viết lại, lịch ngày) và **Haiku 4.5** cho tác vụ đơn giản (phân loại, quét spam). Haiku rẻ hơn ~60x so với Opus. Cấu hình model trong `config.py`.
+A: Mặc định dùng hai model Claude — **Opus 4.6** cho tác vụ phức tạp và **Haiku 4.5** cho tác vụ đơn giản. Có thể chuyển sang bất kỳ model nào qua `.env` (xem phần Cấu hình AI Provider).
 
-**Q: Có thể dùng model AI nội bộ (Ollama, vLLM) thay Claude không?**
-A: Có thể. Tất cả AI calls đều đi qua `ai_client.py` (method `chat()` và `chat_fast()`). Chỉ cần sửa 1 file duy nhất này để chuyển sang OpenAI-compatible API (Ollama, LM Studio, vLLM...).
+**Q: Có thể dùng model AI nội bộ (Ollama, LM Studio) thay Claude không?**
+A: Có. Đặt `AI_PROVIDER=openai` trong `.env` và trỏ `OPENAI_BASE_URL` đến server local (Ollama: `http://localhost:11434/v1`, LM Studio: `http://localhost:1234/v1`). Không cần API key trả phí — hoàn toàn miễn phí.
 
 ---
 
@@ -296,7 +320,7 @@ A: Có thể. Tất cả AI calls đều đi qua `ai_client.py` (method `chat()`
 Outlook_AI/
 ├── main.py              # GUI (tkinter)
 ├── config.py            # Cấu hình
-├── ai_client.py         # Claude API wrapper
+├── ai_client.py         # AI wrapper (Anthropic + OpenAI-compatible)
 ├── outlook_client.py    # Outlook COM wrapper
 ├── features/            # Feature modules
 │   ├── email_classifier.py
@@ -312,7 +336,7 @@ Outlook_AI/
 
 ## Tech Stack
 - **Python** 3.10+
-- **LLM**: Claude Opus 4.6 (phức tạp) + Haiku 4.5 (đơn giản) — Anthropic
+- **LLM**: Claude (Anthropic) hoặc bất kỳ OpenAI-compatible API (Ollama, LM Studio, Groq, OpenRouter...)
 - **Outlook integration**: pywin32 (COM/MAPI) — hỗ trợ multi-PST
 - **GUI**: tkinter (dark theme, Catppuccin palette)
 

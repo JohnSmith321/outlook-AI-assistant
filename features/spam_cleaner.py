@@ -35,6 +35,8 @@ from outlook_client import EmailMessage
 from ai_client import AIClient
 import config
 
+logger = config.get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Scan cache (persists across sessions)
 # ---------------------------------------------------------------------------
@@ -46,7 +48,8 @@ def _load_cache() -> Dict[str, str]:
     """Load entry_id → label cache from disk."""
     try:
         return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Cannot load scan cache: %s", exc)
         return {}
 
 
@@ -54,8 +57,8 @@ def _save_cache(cache: Dict[str, str]) -> None:
     """Persist cache to disk."""
     try:
         _CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Cannot save scan cache: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -140,8 +143,9 @@ def _classify_batch(emails: List[EmailMessage], ai: AIClient) -> List[str]:
             while len(results) < len(emails):
                 results.append("normal")
             return results[:len(emails)]
-    except Exception:
-        pass
+        logger.warning("No JSON array found in spam batch response")
+    except Exception as exc:
+        logger.warning("Batch classify failed, defaulting all to normal: %s", exc)
     return ["normal"] * len(emails)
 
 

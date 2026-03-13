@@ -15,6 +15,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 """Configuration management for Outlook AI Assistant."""
 
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -24,8 +25,24 @@ _env_path = Path(__file__).parent / ".env"
 load_dotenv(_env_path)
 
 
+# ---------------------------------------------------------------------------
+# AI Provider configuration
+# ---------------------------------------------------------------------------
+
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "anthropic").lower()  # "anthropic" or "openai"
+
+
 def get_api_key() -> str:
-    """Return the Anthropic API key from environment."""
+    """Return the API key for the configured provider."""
+    if AI_PROVIDER == "openai":
+        key = os.environ.get("OPENAI_API_KEY", "")
+        if not key:
+            raise ValueError(
+                "OPENAI_API_KEY is not set. "
+                "Copy .env.example to .env and fill in your key. "
+                "For Ollama, set OPENAI_API_KEY=ollama"
+            )
+        return key
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not key:
         raise ValueError(
@@ -35,12 +52,21 @@ def get_api_key() -> str:
     return key
 
 
-# Claude models
-CLAUDE_MODEL = "claude-opus-4-6"            # complex tasks (summarize, rewrite, schedule)
-CLAUDE_MODEL_FAST = "claude-haiku-4-5-20251001"  # simple tasks (classify, spam scan)
+# Model names (overridable via .env)
+CLAUDE_MODEL = os.environ.get(
+    "CLAUDE_MODEL", "claude-opus-4-6"
+)
+CLAUDE_MODEL_FAST = os.environ.get(
+    "CLAUDE_MODEL_FAST", "claude-haiku-4-5-20251001"
+)
 
-# Max tokens for Claude responses
-MAX_TOKENS = 4096
+# OpenAI-compatible provider settings
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+OPENAI_MODEL_FAST = os.environ.get("OPENAI_MODEL_FAST", "")  # empty = same as OPENAI_MODEL
+
+# Max tokens for AI responses
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4096"))
 
 # Spam scan cache file (persists results across sessions)
 SCAN_CACHE_FILE = Path(__file__).parent / ".scan_cache.json"
@@ -52,3 +78,20 @@ EMAIL_LOAD_LIMIT = 50
 OUTLOOK_INBOX = 6
 OUTLOOK_TASKS = 13
 OUTLOOK_CALENDAR = 9
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a named logger with a standard format. Call once per module."""
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+        )
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+    return logger

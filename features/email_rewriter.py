@@ -25,8 +25,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage
+
+logger = config.get_logger(__name__)
 
 Language = Literal["vi", "en"]
 

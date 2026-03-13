@@ -28,8 +28,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage
+
+logger = config.get_logger(__name__)
 
 _SYSTEM = """Bạn là trợ lý AI chuyên phân loại email doanh nghiệp.
 Phân tích email được cung cấp và trả về JSON với cấu trúc sau (KHÔNG thêm markdown hay giải thích):
@@ -91,10 +94,14 @@ class EmailClassifier:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            # Fallback: extract first JSON block
             import re
+            logger.warning("JSON decode failed for classify, trying regex fallback")
             m = re.search(r"\{.*\}", raw, re.DOTALL)
-            data = json.loads(m.group()) if m else {}
+            if m:
+                data = json.loads(m.group())
+            else:
+                logger.warning("Regex fallback also failed, using defaults")
+                data = {}
 
         return ClassificationResult(
             priority=data.get("priority", "Normal"),

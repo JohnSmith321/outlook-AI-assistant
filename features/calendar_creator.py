@@ -28,8 +28,11 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage, OutlookClient, CalendarEvent
+
+logger = config.get_logger(__name__)
 
 _SYSTEM = """Bạn là trợ lý AI giúp phát hiện và trích xuất thông tin cuộc họp từ email doanh nghiệp.
 Phân tích email và trả về JSON với cấu trúc sau (KHÔNG thêm markdown hay giải thích):
@@ -127,8 +130,13 @@ class CalendarCreator:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
+            logger.warning("JSON decode failed for calendar extraction, trying regex fallback")
             m = re.search(r"\{.*\}", raw, re.DOTALL)
-            data = json.loads(m.group()) if m else {"has_meeting": False, "events": []}
+            if m:
+                data = json.loads(m.group())
+            else:
+                logger.warning("Regex fallback also failed, no events extracted")
+                data = {"has_meeting": False, "events": []}
 
         result = CalendarCreationResult(has_meeting=data.get("has_meeting", False))
 

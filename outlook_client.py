@@ -26,12 +26,16 @@ import datetime
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import config
+
 try:
     import win32com.client
     import pywintypes
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
+
+logger = config.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +53,10 @@ class EmailMessage:
     conversation_topic: str = ""
     importance: int = 1          # 0=Low, 1=Normal, 2=High
     unread: bool = False
+
+    @property
+    def importance_label(self) -> str:
+        return {2: "KHẨN", 1: "Bình thường", 0: "Thấp"}.get(self.importance, "")
 
 
 @dataclass
@@ -133,7 +141,8 @@ class OutlookClient:
                     parent_path="", results=folders,
                     mail_only=mail_only,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning("Skipping store %s: %s", store_name, exc)
                 continue
         return folders
 
@@ -153,13 +162,15 @@ class OutlookClient:
             # Filter: only include folders that hold mail (DefaultItemType == 0)
             try:
                 item_type = folder.DefaultItemType
-            except Exception:
+            except Exception as exc:
+                logger.debug("Cannot read DefaultItemType for %s: %s", name, exc)
                 item_type = -1
 
             if not mail_only or item_type == 0:
                 try:
                     count = folder.Items.Count
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Cannot read item count for %s: %s", name, exc)
                     count = 0
                 results.append(FolderInfo(
                     display_name=name,
@@ -175,8 +186,8 @@ class OutlookClient:
                 self._recurse_folders(
                     sub, store_name, store_id, path, results, mail_only
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Error recursing folder: %s", exc)
 
     def get_default_inbox_info(self) -> Optional[FolderInfo]:
         """Return FolderInfo for the default Inbox (fallback)."""
@@ -191,7 +202,8 @@ class OutlookClient:
                 store_id=store.StoreID,
                 item_count=inbox.Items.Count,
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning("Cannot get default inbox: %s", exc)
             return None
 
     # ------------------------------------------------------------------
@@ -228,7 +240,8 @@ class OutlookClient:
                     continue
                 emails.append(self._mail_item_to_email(item))
                 count += 1
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping mail item: %s", exc)
                 continue
         return emails
 
@@ -237,7 +250,8 @@ class OutlookClient:
         try:
             item = self._ns.GetItemFromID(entry_id)
             return self._mail_item_to_email(item)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Cannot get email by ID %s...: %s", entry_id[:16], exc)
             return None
 
     def get_thread_emails(
@@ -255,7 +269,9 @@ class OutlookClient:
                 folder = self._ns.GetFolderFromID(
                     folder_info.entry_id, folder_info.store_id
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning("Cannot open folder %s, falling back to Inbox: %s",
+                               folder_info.full_path, exc)
                 folder = self._ns.GetDefaultFolder(6)
         else:
             folder = self._ns.GetDefaultFolder(6)
@@ -274,7 +290,8 @@ class OutlookClient:
                 if item.ConversationTopic == conversation_topic:
                     thread.messages.append(self._mail_item_to_email(item))
                     count += 1
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping thread item: %s", exc)
                 continue
         return thread
 
@@ -359,7 +376,8 @@ class OutlookClient:
                 item = self._ns.GetItemFromID(entry_id)
                 item.Delete()
                 success += 1
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to delete email %s...: %s", entry_id[:16], exc)
                 fail += 1
         return success, fail
 
@@ -375,7 +393,8 @@ class OutlookClient:
             target = self._ns.GetFolderFromID(target_entry_id, target_store_id)
             item.Move(target)
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to move email %s...: %s", entry_id[:16], exc)
             return False
 
     def move_emails(
@@ -422,13 +441,14 @@ class OutlookClient:
                     if sub.Name == part:
                         found = sub
                         break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error searching subfolder %s: %s", part, exc)
             current = found if found is not None else current.Folders.Add(part)
 
         try:
             count = current.Items.Count
-        except Exception:
+        except Exception as exc:
+            logger.debug("Cannot read item count: %s", exc)
             count = 0
 
         return FolderInfo(
@@ -466,10 +486,11 @@ class OutlookClient:
                             "execution_order": rule.ExecutionOrder,
                         }
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Skipping rule %d: %s", i, exc)
                     continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Cannot read Outlook rules: %s", exc)
         return rules_info
 
     # ------------------------------------------------------------------
@@ -489,7 +510,8 @@ class OutlookClient:
                 name = store.DisplayName
                 try:
                     path = store.FilePath or ""
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Cannot read FilePath for %s: %s", name, exc)
                     path = ""
                 size_bytes = 0
                 if path and os.path.exists(path):
@@ -502,7 +524,8 @@ class OutlookClient:
                         "size_gb": size_bytes / (1024 ** 3),
                     }
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping store in size check: %s", exc)
                 continue
         return result
 
@@ -525,7 +548,8 @@ class OutlookClient:
                 sp = store.FilePath or ""
                 if sp and os.path.normcase(os.path.normpath(sp)) == norm_path:
                     return store.StoreID
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping store while searching for PST: %s", exc)
                 continue
 
         # Open or create
@@ -539,10 +563,11 @@ class OutlookClient:
                 if sp and os.path.normcase(os.path.normpath(sp)) == norm_path:
                     try:
                         store.DisplayName = display_name
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Cannot rename store to %s: %s", display_name, exc)
                     return store.StoreID
-            except Exception:
+            except Exception as exc:
+                logger.debug("Skipping store while finding new PST: %s", exc)
                 continue
 
         raise RuntimeError(f"Cannot open or create PST: {pst_path}")

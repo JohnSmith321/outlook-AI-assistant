@@ -28,8 +28,11 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage, OutlookClient, OutlookTask
+
+logger = config.get_logger(__name__)
 
 _SYSTEM = """Bạn là trợ lý AI giúp trích xuất các công việc cần làm (task) từ email doanh nghiệp.
 Phân tích email và trả về JSON với cấu trúc sau (KHÔNG thêm markdown hay giải thích):
@@ -120,8 +123,13 @@ class TaskCreator:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
+            logger.warning("JSON decode failed for task extraction, trying regex fallback")
             m = re.search(r"\{.*\}", raw, re.DOTALL)
-            data = json.loads(m.group()) if m else {"tasks": []}
+            if m:
+                data = json.loads(m.group())
+            else:
+                logger.warning("Regex fallback also failed, no tasks extracted")
+                data = {"tasks": []}
 
         result = TaskCreationResult()
         for t in data.get("tasks", []):
