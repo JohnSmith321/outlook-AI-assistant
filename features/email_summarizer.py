@@ -24,8 +24,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage, EmailThread
+
+logger = config.get_logger(__name__)
 
 _SYSTEM = """Bạn là trợ lý AI chuyên tóm tắt luồng email doanh nghiệp bằng tiếng Việt.
 Phân tích toàn bộ chuỗi email theo thứ tự thời gian và trả về bản tóm tắt có cấu trúc.

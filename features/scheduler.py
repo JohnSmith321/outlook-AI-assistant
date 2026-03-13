@@ -26,8 +26,11 @@ import datetime
 from dataclasses import dataclass
 from typing import List
 
+import config
 from ai_client import AIClient
 from outlook_client import EmailMessage
+
+logger = config.get_logger(__name__)
 
 _SYSTEM = """Bạn là trợ lý AI lên kế hoạch công việc hàng ngày thông minh.
 Dựa trên danh sách email/task được cung cấp, hãy đề xuất lịch làm việc tối ưu cho ngày hôm nay.
@@ -114,10 +117,3 @@ class DailyScheduler:
 
         schedule = self._ai.chat(system=_SYSTEM, user=user_prompt, stream=True)
         return ScheduleResult(schedule_text=schedule, date=today)
-
-
-# Monkey-patch EmailMessage with a helper property
-def _importance_label(self) -> str:
-    return {2: "KHẨN", 1: "Bình thường", 0: "Thấp"}.get(self.importance, "")
-
-EmailMessage.importance_label = property(_importance_label)
