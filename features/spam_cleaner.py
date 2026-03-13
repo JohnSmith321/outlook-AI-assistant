@@ -187,6 +187,10 @@ class SpamCleaner:
             else:
                 uncached.append(email)
 
+        # Report cached progress immediately if nothing left to scan
+        if progress_cb and result.cached_count and not uncached:
+            progress_cb(result.cached_count, len(emails))
+
         # Batch classify uncached emails
         done = result.cached_count
         for batch_start in range(0, len(uncached), BATCH_SIZE):

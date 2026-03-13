@@ -110,12 +110,16 @@ class TaskCreator:
 
     def extract_and_create(self, email: EmailMessage) -> TaskCreationResult:
         """Extract tasks from email using Claude and create them in Outlook."""
+        received_str = (
+            email.received_time.strftime('%Y-%m-%d %H:%M')
+            if email.received_time else "N/A"
+        )
         user_prompt = (
             f"Người gửi: {email.sender} <{email.sender_email}>\n"
             f"Chủ đề: {email.subject}\n"
-            f"Thời gian nhận: {email.received_time.strftime('%Y-%m-%d %H:%M')}\n"
+            f"Thời gian nhận: {received_str}\n"
             f"Ngày hiện tại: {datetime.date.today().isoformat()}\n"
-            f"Nội dung:\n{email.body[:4000]}"
+            f"Nội dung:\n{email.body[:config.EMAIL_BODY_TRUNCATE]}"
         )
 
         raw = self._ai.chat(system=_SYSTEM, user=user_prompt)

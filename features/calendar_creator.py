@@ -116,13 +116,17 @@ class CalendarCreator:
         """Detect meeting info in email and create Outlook calendar events."""
         today = datetime.date.today()
         now = datetime.datetime.now()
+        received_str = (
+            email.received_time.strftime('%Y-%m-%d %H:%M')
+            if email.received_time else "N/A"
+        )
         user_prompt = (
             f"Người gửi: {email.sender} <{email.sender_email}>\n"
             f"Chủ đề: {email.subject}\n"
-            f"Thời gian nhận: {email.received_time.strftime('%Y-%m-%d %H:%M')}\n"
+            f"Thời gian nhận: {received_str}\n"
             f"Ngày hiện tại: {today.isoformat()} ({today.strftime('%A')})\n"
             f"Giờ hiện tại: {now.strftime('%H:%M')}\n"
-            f"Nội dung:\n{email.body[:4000]}"
+            f"Nội dung:\n{email.body[:config.EMAIL_BODY_TRUNCATE]}"
         )
 
         raw = self._ai.chat(system=_SYSTEM, user=user_prompt)
@@ -144,7 +148,10 @@ class CalendarCreator:
             start = _parse_dt(ev.get("start"))
             end = _parse_dt(ev.get("end"))
             if start and not end:
-                dur = ev.get("duration_minutes", 60)
+                try:
+                    dur = int(ev.get("duration_minutes", 60))
+                except (TypeError, ValueError):
+                    dur = 60
                 end = start + datetime.timedelta(minutes=dur)
 
             extracted = ExtractedEvent(

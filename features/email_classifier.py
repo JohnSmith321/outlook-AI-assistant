@@ -26,6 +26,7 @@ Uses Claude to analyse email metadata + body and return:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 import config
@@ -94,7 +95,6 @@ class EmailClassifier:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            import re
             logger.warning("JSON decode failed for classify, trying regex fallback")
             m = re.search(r"\{.*\}", raw, re.DOTALL)
             if m:

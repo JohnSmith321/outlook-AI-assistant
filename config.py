@@ -66,7 +66,17 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 OPENAI_MODEL_FAST = os.environ.get("OPENAI_MODEL_FAST", "")  # empty = same as OPENAI_MODEL
 
 # Max tokens for AI responses
-MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4096"))
+_max_tokens_raw = os.environ.get("MAX_TOKENS", "4096")
+try:
+    MAX_TOKENS = int(_max_tokens_raw)
+    if MAX_TOKENS <= 0:
+        raise ValueError("must be positive")
+except ValueError:
+    MAX_TOKENS = 4096
+    logging.warning("Invalid MAX_TOKENS=%r, using default 4096", _max_tokens_raw)
+
+# Max chars of email body sent to AI (shared across all features)
+EMAIL_BODY_TRUNCATE = 4000
 
 # Spam scan cache file (persists results across sessions)
 SCAN_CACHE_FILE = Path(__file__).parent / ".scan_cache.json"

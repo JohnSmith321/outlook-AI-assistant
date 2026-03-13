@@ -270,7 +270,12 @@ def plan_archive(
     Return emails older than cutoff_years grouped by year.
     Does NOT touch Outlook.
     """
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=cutoff_years * 365)
+    now = datetime.datetime.now()
+    try:
+        cutoff = now.replace(year=now.year - cutoff_years)
+    except ValueError:
+        # Feb 29 on a leap year — fall back to Feb 28
+        cutoff = now.replace(year=now.year - cutoff_years, day=28)
     groups: Dict[str, List[EmailMessage]] = defaultdict(list)
 
     for email in emails:
